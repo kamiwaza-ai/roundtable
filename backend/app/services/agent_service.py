@@ -8,11 +8,14 @@ from ..repositories.agent_repository import AgentRepository
 from ..schemas.agent import AgentCreate, AgentUpdate, AgentInDB
 from ..models.agent import Agent
 from ..utils.ag2_wrapper import AG2Wrapper
+from ..utils.llm_config_manager import LLMConfigManager
 
 class AgentService:
     def __init__(self, db: Session):
+        self.db = db
         self.repository = AgentRepository(Agent, db)
-        self.ag2_wrapper = AG2Wrapper()
+        self.llm_config_manager = LLMConfigManager()
+        self.ag2_wrapper = AG2Wrapper(self.llm_config_manager)
 
     def create_agent(self, agent_data: AgentCreate) -> AgentInDB:
         # Create database record
@@ -50,4 +53,9 @@ class AgentService:
     def delete_agent(self, agent_id: UUID) -> bool:
         if not self.repository.delete(agent_id):
             raise HTTPException(status_code=404, detail="Agent not found")
+        return True
+
+    def delete_all_agents(self) -> bool:
+        self.db.query(Agent).delete()
+        self.db.commit()
         return True

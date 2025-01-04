@@ -12,9 +12,11 @@ class PhaseConfig(BaseModel):
     transition_trigger: str
 
 class RoundTableSettings(BaseModel):
-    max_rounds: Optional[int] = None
-    speaker_selection_method: str = "auto"  # auto, round_robin, manual
-    allow_human_participation: bool = True
+    max_rounds: Optional[int] = 12
+    speaker_selection_method: str = "auto"  # "auto", "round_robin", "random", "manual"
+    allow_repeat_speaker: bool = True
+    send_introductions: bool = True
+    allowed_speaker_transitions: Optional[Dict[str, List[str]]] = None
 
 class RoundTableBase(BaseModel):
     name: str
@@ -51,8 +53,11 @@ class RoundTableBase(BaseModel):
     })
     settings: RoundTableSettings = Field(default_factory=RoundTableSettings)
     
-class RoundTableCreate(RoundTableBase):
+class RoundTableCreate(BaseModel):
+    title: str
+    context: str
     participant_ids: List[UUID]
+    settings: Optional[RoundTableSettings] = Field(default_factory=RoundTableSettings)
 
 class RoundTableUpdate(RoundTableBase):
     name: Optional[str] = None
@@ -61,10 +66,12 @@ class RoundTableUpdate(RoundTableBase):
     settings: Optional[RoundTableSettings] = None
     current_phase: Optional[str] = None
 
-class RoundTableInDB(RoundTableBase):
+class RoundTableInDB(BaseModel):
     id: UUID
+    title: str
+    context: str
     status: str
-    current_phase: Optional[str]
+    settings: RoundTableSettings
     created_at: datetime
     completed_at: Optional[datetime]
 

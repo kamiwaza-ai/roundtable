@@ -5,19 +5,22 @@ from sqlalchemy import Column, String, JSON, DateTime, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from ..db.session import Base
 
+
 class RoundTable(Base):
     __tablename__ = "round_tables"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    objective = Column(String, nullable=False)
-    status = Column(String(50), nullable=False, default="pending")  # pending, active, completed
-    phase_config = Column(JSON, nullable=False)
-    settings = Column(JSON, nullable=False, default={})
-    current_phase = Column(String(50))
-    max_rounds = Column(Integer)
+    title = Column(String, nullable=False)
+    context = Column(String, nullable=False)  # This will store our objective/context
+    status = Column(String, default="pending")  # pending, active, completed
+    settings = Column(JSON, nullable=False, default={
+        "max_rounds": 12,
+        "speaker_selection_method": "auto",
+        "allow_repeat_speaker": True,
+        "send_introductions": True
+    })
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    completed_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
 class RoundTableParticipant(Base):
     __tablename__ = "round_table_participants"

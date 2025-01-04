@@ -4,11 +4,13 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
+import autogen
 
 from ..repositories.base import BaseRepository
 from ..models.round_table import RoundTable, RoundTableParticipant
 from ..models.agent import Agent
 from ..schemas.round_table import RoundTableCreate, RoundTableUpdate, RoundTableInDB
+from ..utils.llm_config_manager import LLMConfigManager
 from ..utils.ag2_wrapper import AG2Wrapper
 from .agent_service import AgentService
 
@@ -17,7 +19,9 @@ class RoundTableService:
         self.db = db
         self.repository = BaseRepository(RoundTable, db)
         self.agent_service = AgentService(db)
-        self.ag2_wrapper = AG2Wrapper()
+        # Initialize LLMConfigManager and AG2Wrapper
+        self.llm_config_manager = LLMConfigManager()
+        self.ag2_wrapper = AG2Wrapper(self.llm_config_manager)
         
     async def create_round_table(self, data: RoundTableCreate) -> RoundTableInDB:
         """Create a new round table discussion."""
@@ -29,8 +33,19 @@ class RoundTableService:
                 raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
             participants.append(agent)
 
-        # Create database record
-        db_round_table = self.repository.create(data)
+        # Create database record (exclude participant_ids from the data)
+        round_table_data = {
+            "title": data.title,
+            "context": data.context,
+            "settings": data.settings.model_dump() if data.settings else {
+                "max_rounds": 12,
+                "speaker_selection_method": "auto",
+                "allow_repeat_speaker": True,
+                "send_introductions": True
+            }
+        }
+        
+        db_round_table = self.repository.create(round_table_data)
         
         # Create participant records
         for agent in participants:
@@ -128,89 +143,88 @@ class RoundTableService:
         # We'll implement this when we add message storage
         pass
 
-    async def run_discussion(
-        self,
-        round_table_id: UUID,
-        discussion_prompt: str
-    ) -> Dict:
-        """Run a round table discussion with the given prompt.
-        
-        Args:
-            round_table_id: UUID of the round table discussion
-            discussion_prompt: The prompt to initiate the discussion
-            
-        Returns:
-            Dict containing status, round_table_id, and chat_history
-            
-        Raises:
-            HTTPException: If round table not found or in invalid state
-        """
-        round_table = self.repository.get(round_table_id)
-        if not round_table:
-            raise HTTPException(status_code=404, detail="Round table not found")
-        
-        if round_table.status != "pending":
-            raise HTTPException(status_code=400, detail="Round table must be in pending state")
-
-        # Get all participants and create AG2 agents
+    def _get_participants(self, round_table_id: UUID) -> List[Dict]:
+        """Get all participants for a round table"""
+        # Query the round_table_participants table
         participants = (
-            self.db.query(RoundTableParticipant)
+            self.db.query(RoundTableParticipant, Agent)
+            .join(Agent, RoundTableParticipant.agent_id == Agent.id)
             .filter(RoundTableParticipant.round_table_id == round_table_id)
             .all()
         )
+        
+        # Convert to list of agents with their roles
+        return [
+            {
+                "agent": self.agent_service.get_agent(participant.agent_id),
+                "role": participant.role,
+                "speaking_priority": participant.speaking_priority
+            }
+            for participant, agent in participants
+        ]
 
+    async def run_discussion(self, round_table_id: UUID, prompt: str) -> Dict:
+        """Run a round table discussion"""
+        # Get the round table
+        round_table = self.repository.get(round_table_id)
+        if not round_table:
+            raise HTTPException(status_code=404, detail="Round table not found")
+
+        # Get participants
+        participants = self._get_participants(round_table_id)
+        if not participants:
+            raise HTTPException(
+                status_code=400, 
+                detail="No participants found for this round table"
+            )
+
+        # Create AG2 agents for each participant
         ag2_agents = []
         for participant in participants:
-            db_agent = self.agent_service.get_agent(participant.agent_id)
-            ag2_agent = self.ag2_wrapper.create_agent(db_agent)
-            if db_agent.tool_config:
-                self.ag2_wrapper.register_tools(ag2_agent, db_agent.tool_config)
+            agent_data = participant["agent"]
+            ag2_agent = self.ag2_wrapper.create_agent(agent_data)
             ag2_agents.append(ag2_agent)
 
-        # Create and configure group chat
+        # Create group chat
         group_chat = self.ag2_wrapper.create_group_chat(
-            agents=ag2_agents,
-            settings=round_table.settings
+            ag2_agents,
+            round_table.settings
         )
 
-        # Run the discussion
-        try:
-            # Update status
-            round_table.status = "active"
-            round_table.current_phase = "initial"
-            self.db.commit()
+        # Create chat manager
+        manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
 
-            # Format initial message with objective and prompt
-            initial_message = (
-                f"Round Table Discussion\n"
-                f"Objective: {round_table.objective}\n"
-                f"Task: {discussion_prompt}\n"
-                f"Current Phase: {round_table.current_phase}\n"
-                "Please discuss this topic and work together to reach a conclusion."
-            )
+        # Format initial message
+        initial_message = self._format_initial_message(round_table, prompt)
 
-            # Run the discussion
-            chat_history = await self.ag2_wrapper.run_group_discussion(
-                group_chat=group_chat,
-                initial_message=initial_message,
-                max_rounds=round_table.settings.max_rounds
-            )
+        # Start the discussion using the first agent as initiator
+        result = await self.ag2_wrapper.initiate_group_discussion(
+            ag2_agents[0],
+            manager,
+            initial_message,
+            round_table.settings.get("max_rounds")
+        )
 
-            # Update status to completed
-            round_table.status = "completed"
-            round_table.completed_at = datetime.utcnow()
-            self.db.commit()
+        return {
+            "chat_history": result.chat_history,
+            "summary": result.summary if hasattr(result, "summary") else None
+        }
 
-            return {
-                "status": "completed",
-                "round_table_id": round_table_id,
-                "chat_history": chat_history
-            }
+    def _format_initial_message(self, round_table, prompt: str) -> str:
+        """Format the initial message with context and prompt"""
+        return f"""Round Table Discussion: {round_table.title}
+        
+Context: {round_table.context}
 
-        except Exception as e:
-            round_table.status = "error"
-            self.db.commit()
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error running discussion: {str(e)}"
-            )
+Discussion Prompt: {prompt}
+
+Please begin the discussion following your assigned roles."""
+
+    async def get_all_round_tables(self) -> List[RoundTableInDB]:
+        """Get all round tables from the database.
+        
+        Returns:
+            List[RoundTableInDB]: List of all round tables
+        """
+        round_tables = self.repository.get_all()
+        return [RoundTableInDB.model_validate(rt) for rt in round_tables]

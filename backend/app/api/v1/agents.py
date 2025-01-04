@@ -49,3 +49,10 @@ def delete_agent(
 ) -> bool:
     service = AgentService(db)
     return service.delete_agent(agent_id)
+
+@router.delete("/", response_model=bool)
+def delete_all_agents(
+    db: Session = Depends(get_db)
+) -> bool:
+    service = AgentService(db)
+    return service.delete_all_agents()

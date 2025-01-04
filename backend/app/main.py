@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from app.api.v1 import agents, round_tables
+from .utils.llm_config_manager import LLMConfigManager
 
 app = FastAPI(
     title="Corporate Strategy Simulator",
@@ -18,6 +19,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Create singleton instance of LLMConfigManager
+llm_config_manager = LLMConfigManager()
 
 # Include routers
 app.include_router(agents.router, prefix="/api/v1")

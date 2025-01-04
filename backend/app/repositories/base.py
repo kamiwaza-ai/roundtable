@@ -1,9 +1,11 @@
 # app/repositories/base.py
-from typing import Generic, TypeVar, Type, Optional, List
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
+from typing import TypeVar, Type, Generic
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete
 from pydantic import BaseModel
+
 
 ModelType = TypeVar("ModelType")
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
@@ -14,12 +16,15 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self.model = model
         self.db = db
 
-    def create(self, schema: CreateSchemaType) -> ModelType:
-        db_obj = self.model(**schema.model_dump())
+    def create(self, schema: Union[BaseModel, Dict]) -> Any:
+        """Create a new record"""
+        if isinstance(schema, dict):
+            db_obj = self.model(**schema)
+        else:
+            db_obj = self.model(**schema.model_dump())
         self.db.add(db_obj)
-        self.db.flush()
-        self.db.refresh(db_obj)
         self.db.commit()
+        self.db.refresh(db_obj)
         return db_obj
 
     def get(self, id: UUID) -> Optional[ModelType]:

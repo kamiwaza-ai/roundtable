@@ -45,3 +45,18 @@ async def run_discussion(
     """
     service = RoundTableService(db)
     return await service.run_discussion(round_table_id, discussion_prompt)
+
+@router.get("/", response_model=List[RoundTableInDB])
+async def get_all_round_tables(
+    db: Session = Depends(get_db)
+) -> List[RoundTableInDB]:
+    """Get all round tables
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        List of round tables
+    """
+    service = RoundTableService(db)
+    return await service.get_all_round_tables()
