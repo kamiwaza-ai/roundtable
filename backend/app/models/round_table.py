@@ -1,9 +1,10 @@
 # app/models/round_table.py
 from datetime import datetime
 import uuid
-from sqlalchemy import Column, String, JSON, DateTime, ForeignKey, Integer
+from sqlalchemy import Column, String, JSON, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from ..db.session import Base
+from sqlalchemy.orm import relationship
 
 
 class RoundTable(Base):
@@ -22,12 +23,9 @@ class RoundTable(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-class RoundTableParticipant(Base):
-    __tablename__ = "round_table_participants"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    round_table_id = Column(UUID(as_uuid=True), ForeignKey("round_tables.id"), nullable=False)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=False)
-    role = Column(String(50))
-    speaking_priority = Column(Integer)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    # Add relationship
+    participants = relationship(
+        "RoundTableParticipant",
+        back_populates="round_table",
+        cascade="all, delete-orphan"
+    )

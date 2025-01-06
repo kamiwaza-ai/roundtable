@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from ...db.session import get_db
 from ...schemas.round_table import RoundTableCreate, RoundTableUpdate, RoundTableInDB
 from ...services.round_table_service import RoundTableService
+from ...models.round_table import RoundTable
+from ...models.round_table_participant import RoundTableParticipant
 
 router = APIRouter(prefix="/round-tables", tags=["round_tables"])
 

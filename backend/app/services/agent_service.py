@@ -3,6 +3,7 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import text
 
 from ..repositories.agent_repository import AgentRepository
 from ..schemas.agent import AgentCreate, AgentUpdate, AgentInDB
@@ -56,6 +57,10 @@ class AgentService:
         return True
 
     def delete_all_agents(self) -> bool:
-        self.db.query(Agent).delete()
-        self.db.commit()
-        return True
+        try:
+            self.db.query(Agent).delete()
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))

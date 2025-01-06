@@ -3,6 +3,8 @@ import httpx
 from uuid import UUID
 from typing import List, Dict
 import os
+from app.models.round_table import RoundTable
+from app.models.round_table_participant import RoundTableParticipant
 
 async def create_agent(client: httpx.AsyncClient, agent_data: Dict) -> Dict:
     """Create an agent via the API"""

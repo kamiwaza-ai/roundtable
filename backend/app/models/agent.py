@@ -1,8 +1,9 @@
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, Boolean, DateTime, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from ..db.session import Base
+from sqlalchemy.orm import relationship
 
 
 class Agent(Base):
@@ -18,6 +19,13 @@ class Agent(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Add relationship with cascade delete
+    round_table_participants = relationship(
+        "RoundTableParticipant",
+        back_populates="agent",
+        cascade="all, delete-orphan"
+    )
 
 
 class AgentCapability(Base):

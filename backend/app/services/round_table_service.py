@@ -7,7 +7,8 @@ from datetime import datetime
 import autogen
 
 from ..repositories.base import BaseRepository
-from ..models.round_table import RoundTable, RoundTableParticipant
+from ..models.round_table import RoundTable
+from ..models.round_table_participant import RoundTableParticipant
 from ..models.agent import Agent
 from ..schemas.round_table import RoundTableCreate, RoundTableUpdate, RoundTableInDB
 from ..utils.llm_config_manager import LLMConfigManager
