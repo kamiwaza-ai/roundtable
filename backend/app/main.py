@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from app.api.v1 import agents, round_tables
+from app.api.v1 import agents, round_tables, messages
 from .utils.llm_config_manager import LLMConfigManager
 
 app = FastAPI(
@@ -26,7 +26,7 @@ llm_config_manager = LLMConfigManager()
 # Include routers
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(round_tables.router, prefix="/api/v1")
-
+app.include_router(messages.router, prefix="/api/v1")
 @app.get("/")
 async def root():
     return {"message": "Corporate Strategy Simulator API"}

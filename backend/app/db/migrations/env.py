@@ -15,6 +15,7 @@ from app.db.session import Base
 from app.models.agent import Agent, AgentCapability
 from app.models.round_table import RoundTable
 from app.models.round_table_participant import RoundTableParticipant
+from app.models.message import Message
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -23,9 +23,14 @@ class RoundTable(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Add relationship
+    # Add relationships
     participants = relationship(
         "RoundTableParticipant",
+        back_populates="round_table",
+        cascade="all, delete-orphan"
+    )
+    messages = relationship(
+        "Message",
         back_populates="round_table",
         cascade="all, delete-orphan"
     )

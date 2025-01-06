@@ -3,8 +3,7 @@ import httpx
 from uuid import UUID
 from typing import List, Dict
 import os
-from app.models.round_table import RoundTable
-from app.models.round_table_participant import RoundTableParticipant
+
 
 async def create_agent(client: httpx.AsyncClient, agent_data: Dict) -> Dict:
     """Create an agent via the API"""
@@ -44,11 +43,12 @@ async def main():
         agents = []
         agent_configs = [
             {
-                "name": "business_analyst",
-                "title": "Senior Business Analyst",
-                "background": """You are an experienced business analyst skilled in market research,
-                data analysis, and strategic planning. Focus on data-driven insights and practical
-                business implications.""",
+                "name": "security_analyst",
+                "title": "Senior Security Analyst",
+                "background": """You are a seasoned security analyst with expertise in 
+                threat detection, incident response, and digital forensics. You excel at 
+                analyzing security logs, identifying attack patterns, and conducting 
+                root cause analysis.""",
                 "agent_type": "assistant",
                 "llm_config": {
                     "temperature": 0.7,
@@ -57,11 +57,12 @@ async def main():
                 "tool_config": None
             },
             {
-                "name": "strategy_consultant",
-                "title": "Management Consultant",
-                "background": """You are a strategic management consultant with expertise in
-                corporate strategy, market entry, and competitive analysis. Provide strategic
-                frameworks and actionable recommendations.""",
+                "name": "network_engineer",
+                "title": "Network Security Engineer",
+                "background": """You are a network security expert specializing in 
+                infrastructure security, firewall configuration, and network monitoring. 
+                You understand network protocols, security architecture, and best practices 
+                for network defense.""",
                 "agent_type": "assistant",
                 "llm_config": {
                     "temperature": 0.7,
@@ -70,11 +71,12 @@ async def main():
                 "tool_config": None
             },
             {
-                "name": "product_manager",
-                "title": "Senior Product Manager",
-                "background": """You are a seasoned product manager with experience in launching 
-                and scaling software products. Focus on user needs, product-market fit, and 
-                feature prioritization. Provide insights on product positioning and user adoption.""",
+                "name": "incident_manager",
+                "title": "Incident Response Manager",
+                "background": """You are an incident response manager with experience in 
+                coordinating security incidents, managing communication with stakeholders, 
+                and implementing incident response procedures. You focus on business impact, 
+                compliance requirements, and recovery strategies.""",
                 "agent_type": "assistant",
                 "llm_config": {
                     "temperature": 0.7,
@@ -92,8 +94,8 @@ async def main():
 
         # Create round table
         round_table_data = {
-            "title": "Test Strategy Discussion",
-            "context": "Develop market entry strategy for a new product",
+            "title": "Security Incident Analysis and Response2",
+            "context": "Analyze and respond to a potential data breach in our cloud infrastructure",
             "participant_ids": [agent["id"] for agent in agents],
             "settings": {
                 "max_rounds": 10,
@@ -109,14 +111,19 @@ async def main():
 
         # Start the discussion
         discussion_prompt = """
-        We need to develop a market entry strategy for a new AI-powered productivity tool.
-        Consider the following aspects:
-        1. Target market selection
-        2. Competitive analysis
-        3. Pricing strategy
-        4. Go-to-market approach
-        
-        Please analyze these aspects and provide recommendations.
+        We've detected unusual activity in our cloud infrastructure suggesting a potential 
+        data breach. Our monitoring systems have identified:
+        1. Unexpected outbound traffic from several database servers
+        2. Multiple failed login attempts from foreign IP addresses
+        3. Unusual process execution patterns on critical systems
+        4. Several modified system files on application servers
+
+        Please analyze the situation and develop an immediate response plan addressing:
+        1. Initial assessment and threat evaluation
+        2. Immediate containment measures
+        3. Investigation and evidence collection approach
+        4. Communication strategy for stakeholders
+        5. Long-term remediation recommendations
         """
 
         print("\nStarting discussion...")

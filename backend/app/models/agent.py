@@ -20,9 +20,14 @@ class Agent(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Add relationship with cascade delete
+    # Add relationships with cascade delete
     round_table_participants = relationship(
         "RoundTableParticipant",
+        back_populates="agent",
+        cascade="all, delete-orphan"
+    )
+    messages = relationship(
+        "Message",
         back_populates="agent",
         cascade="all, delete-orphan"
     )

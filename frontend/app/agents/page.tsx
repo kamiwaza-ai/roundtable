@@ -1,74 +1,140 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-
-interface Agent {
-  id: string;
-  name: string;
-  title: string;
-  background: string;
-}
+import { useState, useEffect } from 'react';
+import { Agent, CreateAgentRequest } from '@/lib/api-types';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AgentsPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [isOpen, setIsOpen] = useState(false);
+    const [formData, setFormData] = useState<CreateAgentRequest>({
+        name: '',
+        title: '',
+        background: '',
+        agent_type: 'standard',
+        llm_config: {
+            temperature: 0.7,
+            model: 'gpt-4',
+        },
+    });
 
-  useEffect(() => {
-    async function fetchAgents() {
-      try {
-        const res = await fetch("http://localhost:8000/api/v1/agents/", {
-          method: "GET",
-        });
-        if (!res.ok) {
-          throw new Error("Failed to fetch agents.");
+    useEffect(() => {
+        loadAgents();
+    }, []);
+
+    const loadAgents = async () => {
+        try {
+            const data = await api.getAgents();
+            setAgents(data);
+        } catch (error) {
+            console.error('Failed to load agents:', error);
         }
-        const data = await res.json();
-        setAgents(data);
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    }
+    };
 
-    fetchAgents();
-  }, []);
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            await api.createAgent(formData);
+            setIsOpen(false);
+            loadAgents();
+            setFormData({
+                name: '',
+                title: '',
+                background: '',
+                agent_type: 'standard',
+                llm_config: {
+                    temperature: 0.7,
+                    model: 'gpt-4',
+                },
+            });
+        } catch (error) {
+            console.error('Failed to create agent:', error);
+        }
+    };
 
-  if (loading) {
-    return <div>Loading Agents...</div>;
-  }
+    return (
+        <div className="container mx-auto py-8">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold">Agents</h1>
+                <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                    <DialogTrigger asChild>
+                        <Button>Create Agent</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Create New Agent</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <Label htmlFor="name">Name</Label>
+                                <Input
+                                    id="name"
+                                    value={formData.name}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, name: e.target.value })
+                                    }
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="title">Title</Label>
+                                <Input
+                                    id="title"
+                                    value={formData.title}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, title: e.target.value })
+                                    }
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="background">Background</Label>
+                                <Textarea
+                                    id="background"
+                                    value={formData.background}
+                                    onChange={(e) =>
+                                        setFormData({
+                                            ...formData,
+                                            background: e.target.value,
+                                        })
+                                    }
+                                    required
+                                />
+                            </div>
+                            <Button type="submit">Create</Button>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </div>
 
-  if (error) {
-    return <div className="text-red-500">Error: {error}</div>;
-  }
-
-  return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">Agents</h1>
-      <Link
-        href="/agents/new"
-        className={cn(
-          "inline-block bg-primary text-primary-foreground px-4 py-2 rounded hover:opacity-90"
-        )}
-      >
-        Create New Agent
-      </Link>
-
-      <ul className="mt-4 space-y-2">
-        {agents.map((agent) => (
-          <li
-            key={agent.id}
-            className="p-2 border border-border rounded hover:bg-muted"
-          >
-            <Link href={`/agents/${agent.id}`} className="hover:underline">
-              <strong>{agent.name}</strong> – {agent.title}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {agents.map((agent) => (
+                    <Card key={agent.id}>
+                        <CardHeader>
+                            <CardTitle>{agent.name}</CardTitle>
+                            <div className="text-sm text-gray-500">{agent.title}</div>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-sm">{agent.background}</p>
+                            <div className="mt-4 text-sm text-gray-500">
+                                Type: {agent.agent_type}
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+        </div>
+    );
 }

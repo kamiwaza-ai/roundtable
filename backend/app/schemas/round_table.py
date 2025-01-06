@@ -4,6 +4,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from .message import MessageInDB
+
 class PhaseConfig(BaseModel):
     id: str
     name: str
@@ -74,6 +76,7 @@ class RoundTableInDB(BaseModel):
     settings: RoundTableSettings
     created_at: datetime
     completed_at: Optional[datetime]
+    messages: Optional[List[MessageInDB]] = []
 
     class Config:
         from_attributes = True
