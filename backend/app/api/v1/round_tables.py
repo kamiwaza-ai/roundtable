@@ -1,8 +1,9 @@
 # app/api/v1/round_tables.py
-from typing import List
+from typing import List, Dict
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from ...db.session import get_db
 from ...schemas.round_table import RoundTableCreate, RoundTableUpdate, RoundTableInDB
@@ -11,6 +12,9 @@ from ...models.round_table import RoundTable
 from ...models.round_table_participant import RoundTableParticipant
 
 router = APIRouter(prefix="/round-tables", tags=["round_tables"])
+
+class DiscussionRequest(BaseModel):
+    discussion_prompt: str
 
 @router.post("/", response_model=RoundTableInDB)
 async def create_round_table(
@@ -32,21 +36,21 @@ async def transition_phase(
 @router.post("/{round_table_id}/discuss")
 async def run_discussion(
     round_table_id: UUID,
-    discussion_prompt: str,
+    request: DiscussionRequest,
     db: Session = Depends(get_db)
 ):
     """Start and run a round table discussion
     
     Args:
         round_table_id: UUID of the round table
-        discussion_prompt: The prompt to initiate the discussion
+        request: The discussion request containing the prompt
         db: Database session
         
     Returns:
         Dict containing status, round_table_id, and chat_history
     """
     service = RoundTableService(db)
-    return await service.run_discussion(round_table_id, discussion_prompt)
+    return await service.run_discussion(round_table_id, request.discussion_prompt)
 
 @router.get("/", response_model=List[RoundTableInDB])
 async def get_all_round_tables(

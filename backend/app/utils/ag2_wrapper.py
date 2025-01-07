@@ -1,5 +1,5 @@
 # app/utils/ag2_wrapper.py
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Callable
 import autogen
 from app.schemas.round_table import RoundTableSettings
 from app.schemas.agent import AgentCreate
@@ -57,9 +57,29 @@ class AG2Wrapper:
         initiating_agent: autogen.ConversableAgent,
         manager: autogen.GroupChatManager,
         message: str,
-        max_rounds: Optional[int] = None
+        max_rounds: Optional[int] = None,
+        message_callback: Optional[Callable] = None
     ) -> autogen.ChatResult:
         """Initiate a group discussion using AG2's pattern"""
+        # Register message callback if provided
+        if message_callback:
+            def message_handler(self, messages, sender, config):
+                if messages and isinstance(messages[-1], dict) and messages[-1].get("content"):
+                    message_callback(messages[-1])
+                return False, None
+            
+            def trigger_fn(sender):
+                return True  # Handle all messages
+            
+            # Register the message handler for each agent in the group chat
+            for agent in manager.groupchat.agents:
+                agent.register_reply(
+                    reply_func=message_handler,
+                    trigger=trigger_fn,
+                    config=None,
+                    reset_config=False
+                )
+
         return await initiating_agent.a_initiate_chat(
             manager,
             message=message,

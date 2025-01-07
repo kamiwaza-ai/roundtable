@@ -43,9 +43,10 @@ export const api = {
     
     startDiscussion: (roundTableId: string, prompt: string) =>
         fetchApi<{ chat_history: any[], summary: string | null }>(
-            `/round-tables/${roundTableId}/discuss?discussion_prompt=${encodeURIComponent(prompt)}`,
+            `/round-tables/${roundTableId}/discuss`,
             {
-                method: 'POST'
+                method: 'POST',
+                body: JSON.stringify({ discussion_prompt: prompt })
             }
         ),
     

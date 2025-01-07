@@ -63,6 +63,7 @@ class RoundTableService:
 
     def _store_message(self, message_data: Dict) -> Message:
         """Store a message in the database."""
+        print(f"Storing message: {message_data}")
         message = Message(
             round_table_id=message_data["round_table_id"],
             agent_id=message_data["agent_id"],
@@ -71,16 +72,19 @@ class RoundTableService:
         )
         self.db.add(message)
         self.db.commit()
+        print(f"Message stored with ID: {message.id}")
         return message
 
     def get_discussion_history(self, round_table_id: UUID) -> List[Dict]:
         """Get the message history for a round table discussion."""
+        print(f"Getting discussion history for round table: {round_table_id}")
         messages = (
             self.db.query(Message)
             .filter(Message.round_table_id == round_table_id)
             .order_by(Message.created_at)
             .all()
         )
+        print(f"Found {len(messages)} messages")
         return [MessageInDB.model_validate(msg) for msg in messages]
 
     async def run_discussion(self, round_table_id: UUID, prompt: str) -> Dict:
@@ -125,28 +129,26 @@ class RoundTableService:
             "message_type": "introduction"
         })
 
+        # Update round table status to in_progress
+        round_table.status = "in_progress"
+        self.db.commit()
+
         # Start the discussion using the first agent as initiator
         result = await self.ag2_wrapper.initiate_group_discussion(
             ag2_agents[0],
             manager,
             initial_message,
-            round_table.settings.get("max_rounds")
-        )
-
-        # Store all messages from the discussion
-        for msg in result.chat_history:
-            # Find the agent ID based on the name in the message
-            agent = next(
-                (p["agent"] for p in participants if p["agent"].name == msg.get("name")),
-                participants[0]["agent"]  # Default to first agent if not found
-            )
-            
-            self._store_message({
+            round_table.settings.get("max_rounds"),
+            message_callback=lambda msg: self._store_message({
                 "round_table_id": round_table_id,
-                "agent_id": agent.id,
+                "agent_id": next(
+                    (p["agent"].id for p in participants if p["agent"].name == msg.get("name")),
+                    participants[0]["agent"].id  # Default to first agent if not found
+                ),
                 "content": msg.get("content", ""),
                 "message_type": "discussion"
             })
+        )
 
         # Update round table status
         round_table.status = "completed"

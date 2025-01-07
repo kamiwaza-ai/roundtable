@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { RoundTable, Message } from "@/lib/api-types";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Loader2 } from "lucide-react";
+
+const POLLING_INTERVAL = 2000; // 2 seconds
 
 export default function RoundTablePage() {
     const path = usePathname();
@@ -17,11 +20,7 @@ export default function RoundTablePage() {
     const [discussionPrompt, setDiscussionPrompt] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-
-    useEffect(() => {
-        loadRoundTable();
-        loadMessages();
-    }, [roundTableId]);
+    const [isPolling, setIsPolling] = useState(false);
 
     const loadRoundTable = async () => {
         if (!roundTableId) return;
@@ -32,6 +31,11 @@ export default function RoundTablePage() {
                 throw new Error("Round table not found");
             }
             setRoundTable(table);
+            
+            // Start polling if the discussion is in progress
+            if (table.status !== "completed") {
+                setIsPolling(true);
+            }
         } catch (error) {
             setError(error instanceof Error ? error.message : "Failed to load round table");
         } finally {
@@ -39,26 +43,49 @@ export default function RoundTablePage() {
         }
     };
 
-    const loadMessages = async () => {
+    const loadMessages = useCallback(async () => {
         if (!roundTableId) return;
         try {
             const data = await api.getRoundTableMessages(roundTableId);
             setMessages(data);
+
+            // If we have a roundTable and it's completed, stop polling
+            if (roundTable?.status === "completed") {
+                setIsPolling(false);
+            }
         } catch (error) {
             console.error("Failed to load messages:", error);
         }
-    };
+    }, [roundTableId, roundTable?.status]);
+
+    // Initial load
+    useEffect(() => {
+        loadRoundTable();
+    }, [roundTableId]);
+
+    // Polling effect
+    useEffect(() => {
+        if (!isPolling) return;
+
+        loadMessages();
+        const interval = setInterval(async () => {
+            await loadMessages();
+            // Refresh round table to check status
+            await loadRoundTable();
+        }, POLLING_INTERVAL);
+
+        return () => clearInterval(interval);
+    }, [isPolling, loadMessages]);
 
     const handleStartDiscussion = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!roundTableId || !discussionPrompt) return;
 
         try {
+            // Start the discussion
             await api.startDiscussion(roundTableId, discussionPrompt);
             setDiscussionPrompt("");
-            // Reload round table and messages
-            await loadRoundTable();
-            await loadMessages();
+            setIsPolling(true);
         } catch (error) {
             setError(error instanceof Error ? error.message : "Failed to start discussion");
         }
@@ -81,7 +108,12 @@ export default function RoundTablePage() {
             <div>
                 <h1 className="text-3xl font-bold mb-2">{roundTable.title}</h1>
                 <p className="text-gray-600 mb-4">{roundTable.context}</p>
-                <div className="text-sm text-gray-500">Status: {roundTable.status}</div>
+                <div className="text-sm text-gray-500 flex items-center gap-2">
+                    Status: {roundTable.status}
+                    {isPolling && (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                    )}
+                </div>
             </div>
 
             {roundTable.status === "pending" && (
@@ -119,6 +151,13 @@ export default function RoundTablePage() {
                             </Card>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {isPolling && messages.length === 0 && (
+                <div className="flex items-center justify-center p-8 text-gray-500">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    <span>Starting discussion...</span>
                 </div>
             )}
         </div>

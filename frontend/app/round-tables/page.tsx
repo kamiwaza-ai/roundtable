@@ -17,8 +17,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { MultiSelect } from '@/components/ui/multi-select';
+import { useRouter } from 'next/navigation';
 
 export default function RoundTablesPage() {
+    const router = useRouter();
     const [roundTables, setRoundTables] = useState<RoundTable[]>([]);
     const [agents, setAgents] = useState<Agent[]>([]);
     const [isOpen, setIsOpen] = useState(false);
@@ -75,14 +77,13 @@ export default function RoundTablesPage() {
         if (!selectedRoundTable) return;
 
         try {
-            const result = await api.startDiscussion(
-                selectedRoundTable.id,
-                discussionPrompt
-            );
+            api.startDiscussion(selectedRoundTable.id, discussionPrompt);
+            
             setIsDiscussOpen(false);
-            loadRoundTables();
             setDiscussionPrompt('');
             setSelectedRoundTable(null);
+            
+            router.push(`/round-tables/${selectedRoundTable.id}`);
         } catch (error) {
             console.error('Failed to start discussion:', error);
         }
