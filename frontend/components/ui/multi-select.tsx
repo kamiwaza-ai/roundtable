@@ -90,7 +90,7 @@ export function MultiSelect({
           </div>
         </SelectTrigger>
         <SelectContent>
-          <ScrollArea className="max-h-[200px]">
+          <ScrollArea className="h-[200px] pr-2">
             {options.map((option) => (
               <SelectItem
                 key={option.value}

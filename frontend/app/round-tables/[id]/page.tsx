@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
-import { RoundTable, Message } from "@/lib/api-types";
+import { RoundTable, Message, Agent } from "@/lib/api-types";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +17,7 @@ export default function RoundTablePage() {
 
     const [roundTable, setRoundTable] = useState<RoundTable | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
+    const [agents, setAgents] = useState<Record<string, Agent>>({});
     const [discussionPrompt, setDiscussionPrompt] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -36,6 +37,14 @@ export default function RoundTablePage() {
             if (table.status !== "completed") {
                 setIsPolling(true);
             }
+
+            // Load agents for the messages
+            const agentList = await api.getAgents();
+            const agentMap = agentList.reduce((acc, agent) => {
+                acc[agent.id] = agent;
+                return acc;
+            }, {} as Record<string, Agent>);
+            setAgents(agentMap);
         } catch (error) {
             setError(error instanceof Error ? error.message : "Failed to load round table");
         } finally {
@@ -61,7 +70,8 @@ export default function RoundTablePage() {
     // Initial load
     useEffect(() => {
         loadRoundTable();
-    }, [roundTableId]);
+        loadMessages();
+    }, [roundTableId, loadMessages]);
 
     // Polling effect
     useEffect(() => {
@@ -137,19 +147,25 @@ export default function RoundTablePage() {
             {messages.length > 0 && (
                 <div className="space-y-4">
                     <h2 className="text-xl font-semibold">Discussion</h2>
-                    <div className="space-y-4">
-                        {messages.map((message) => (
-                            <Card key={message.id}>
-                                <CardContent className="pt-6">
-                                    <div className="text-sm text-gray-500 mb-2">
-                                        {new Date(message.created_at).toLocaleString()}
+                    <div className="space-y-3 max-w-3xl">
+                        {messages.map((message) => {
+                            const agent = agents[message.agent_id];
+                            return (
+                                <div key={message.id} className="flex flex-col">
+                                    <div className="flex items-baseline gap-2 mb-1">
+                                        <span className="font-semibold text-sm">
+                                            {agent?.name || "Unknown Agent"}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                            {new Date(message.created_at).toLocaleTimeString()}
+                                        </span>
                                     </div>
-                                    <div className="prose max-w-none">
+                                    <div className="bg-gray-100 rounded-lg p-4 prose max-w-none">
                                         {message.content}
                                     </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}

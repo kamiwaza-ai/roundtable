@@ -36,25 +36,27 @@ class RoundTableService:
                 raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
             participants.append(agent)
 
-        # Create database record (exclude participant_ids from the data)
+        # Create database record with optimized default settings
         round_table_data = {
             "title": data.title,
             "context": data.context,
             "settings": data.settings.model_dump() if data.settings else {
                 "max_rounds": 12,
-                "speaker_selection_method": "auto",
-                "allow_repeat_speaker": True,
+                "max_round": 12,
+                "speaker_selection_method": "round_robin",
+                "allow_repeat_speaker": False,
                 "send_introductions": True
             }
         }
         
         db_round_table = self.repository.create(round_table_data)
         
-        # Create participant records
-        for agent in participants:
+        # Create participant records with speaking priority
+        for i, agent in enumerate(participants):
             participant = RoundTableParticipant(
                 round_table_id=db_round_table.id,
-                agent_id=agent.id
+                agent_id=agent.id,
+                speaking_priority=i + 1  # Assign speaking priority based on order
             )
             self.db.add(participant)
         
@@ -104,24 +106,37 @@ class RoundTableService:
 
         # Create AG2 agents for each participant
         ag2_agents = []
+        # Create a mapping of agent names to database IDs
+        agent_name_to_id = {}
         for participant in participants:
             agent_data = participant["agent"]
+            # Create AG2 agent with the exact same name as the database agent
             ag2_agent = self.ag2_wrapper.create_agent(agent_data)
             ag2_agents.append(ag2_agent)
+            # Store the mapping of agent name to database ID
+            agent_name_to_id[ag2_agent.name] = agent_data.id
+            print(f"Created agent mapping: {ag2_agent.name} -> {agent_data.id}")
 
-        # Create group chat
+        # Create group chat with proper settings
+        group_chat_settings = {
+            "max_round": round_table.settings.get("max_round", 12),  # Use consistent parameter name
+            "speaker_selection_method": round_table.settings.get("speaker_selection_method", "round_robin"),
+            "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", False),
+            "send_introductions": round_table.settings.get("send_introductions", True)
+        }
+        
         group_chat = self.ag2_wrapper.create_group_chat(
             ag2_agents,
-            round_table.settings
+            group_chat_settings
         )
 
-        # Create chat manager
+        # Create the GroupChatManager to coordinate the discussion
         manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
 
         # Format initial message
         initial_message = self._format_initial_message(round_table, prompt)
 
-        # Store the initial message
+        # Store the initial message from the first agent
         self._store_message({
             "round_table_id": round_table_id,
             "agent_id": participants[0]["agent"].id,  # First agent starts
@@ -133,21 +148,55 @@ class RoundTableService:
         round_table.status = "in_progress"
         self.db.commit()
 
-        # Start the discussion using the first agent as initiator
-        result = await self.ag2_wrapper.initiate_group_discussion(
-            ag2_agents[0],
-            manager,
-            initial_message,
-            round_table.settings.get("max_rounds"),
-            message_callback=lambda msg: self._store_message({
+        # Define message callback that correctly maps sender to DB agent
+        def message_callback(message: Dict) -> None:
+            if not message.get("content"):
+                return
+                
+            # Get the sender's name from the message
+            sender_name = message.get("name")
+            print(f"Processing message from sender: {sender_name}")
+            print(f"Available agent mappings: {agent_name_to_id}")
+            
+            # Find the corresponding participant agent using the name mapping
+            agent_id = agent_name_to_id.get(sender_name)
+            if not agent_id:
+                print(f"Warning: Could not find agent ID for sender {sender_name}, using first agent")
+                agent_id = participants[0]["agent"].id
+
+            # Store the message
+            self._store_message({
                 "round_table_id": round_table_id,
-                "agent_id": next(
-                    (p["agent"].id for p in participants if p["agent"].name == msg.get("name")),
-                    participants[0]["agent"].id  # Default to first agent if not found
-                ),
-                "content": msg.get("content", ""),
+                "agent_id": agent_id,
+                "content": message.get("content", ""),
                 "message_type": "discussion"
             })
+
+        # Register callback for all agents
+        for agent in ag2_agents:
+            agent.register_reply(
+                reply_func=lambda recipient, messages, sender, config: (
+                    False, 
+                    message_callback({
+                        "name": messages[-1].get("name") if messages and len(messages) > 0 else sender.name,  # Use message name or sender name
+                        "content": messages[-1].get("content", "") if messages and len(messages) > 0 else ""
+                    }) if messages and len(messages) > 0 else None
+                ),
+                trigger=lambda _: True
+            )
+
+        # Initialize the group chat with the first message
+        group_chat.messages.append({
+            "role": "user",
+            "content": initial_message,
+            "name": ag2_agents[0].name  # Use first agent's name
+        })
+
+        # Start discussion using the first agent's message
+        result = await manager.a_run_chat(
+            messages=group_chat.messages,  # Use the initialized messages
+            sender=ag2_agents[0],  # First agent starts the discussion
+            config=group_chat  # Pass the GroupChat as config
         )
 
         # Update round table status
@@ -156,19 +205,26 @@ class RoundTableService:
         self.db.commit()
 
         return {
-            "chat_history": result.chat_history,
-            "summary": result.summary if hasattr(result, "summary") else None
+            "chat_history": manager.groupchat.messages,
+            "summary": None  # Summary will be handled separately if needed
         }
 
     def _format_initial_message(self, round_table, prompt: str) -> str:
-        """Format the initial message with context and prompt"""
-        return f"""Round Table Discussion: {round_table.title}
-        
+        """Format the initial message with clear structure and guidelines"""
+        return f"""Topic: {round_table.title}
+
 Context: {round_table.context}
 
-Discussion Prompt: {prompt}
+Task: {prompt}
 
-Please begin the discussion following your assigned roles."""
+Guidelines for Discussion:
+1. Keep responses focused and brief (2-3 sentences)
+2. Address only the current topic
+3. Build on others' contributions
+4. Provide specific, actionable input
+5. Use natural conversational language
+
+Begin the discussion by addressing the task directly."""
 
     async def get_all_round_tables(self) -> List[RoundTableInDB]:
         """Get all round tables from the database.
@@ -203,3 +259,32 @@ Please begin the discussion following your assigned roles."""
             }
             for participant, agent in participants
         ]
+
+    async def delete_all_messages(self) -> bool:
+        """Delete all messages from the database.
+        
+        Returns:
+            bool: True if successful
+        """
+        try:
+            self.db.query(Message).delete()
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    async def delete_all_round_tables(self) -> bool:
+        """Delete all round tables from the database.
+        This will cascade delete all associated messages and participants.
+        
+        Returns:
+            bool: True if successful
+        """
+        try:
+            self.db.query(RoundTable).delete()
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))

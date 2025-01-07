@@ -20,3 +20,18 @@ async def get_round_table_messages(
     if not messages:
         raise HTTPException(status_code=404, detail="No messages found for this round table")
     return messages 
+
+@router.delete("/", response_model=bool)
+async def delete_all_messages(
+    db: Session = Depends(get_db)
+) -> bool:
+    """Delete all messages from all round tables.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        bool: True if successful
+    """
+    service = RoundTableService(db)
+    return await service.delete_all_messages() 

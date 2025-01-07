@@ -66,3 +66,19 @@ async def get_all_round_tables(
     """
     service = RoundTableService(db)
     return await service.get_all_round_tables()
+
+@router.delete("/", response_model=bool)
+async def delete_all_round_tables(
+    db: Session = Depends(get_db)
+) -> bool:
+    """Delete all round tables and their associated data.
+    This will cascade delete all messages and participants.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        bool: True if successful
+    """
+    service = RoundTableService(db)
+    return await service.delete_all_round_tables()

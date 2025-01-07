@@ -26,7 +26,7 @@ export default function AgentsPage() {
         agent_type: 'standard',
         llm_config: {
             temperature: 0.7,
-            model: 'gpt-4',
+            model: 'gpt-4o',
         },
     });
 
@@ -56,7 +56,7 @@ export default function AgentsPage() {
                 agent_type: 'standard',
                 llm_config: {
                     temperature: 0.7,
-                    model: 'gpt-4',
+                    model: 'gpt-4o',
                 },
             });
         } catch (error) {

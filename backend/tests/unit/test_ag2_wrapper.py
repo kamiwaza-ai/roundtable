@@ -27,7 +27,7 @@ def test_create_standard_agent(ag2_wrapper):
         title="Test Title",
         background="Test background",
         agent_type="standard",
-        llm_config={"model": "gpt-4o-mini"}
+        llm_config={"model": "gpt-4o"}
     )
     
     agent = ag2_wrapper.create_agent(config)
@@ -42,7 +42,7 @@ def test_create_human_proxy_agent(ag2_wrapper):
         title="Human Title",
         background="Human background",
         agent_type="human_proxy",
-        llm_config={"model": "gpt-4"}
+        llm_config={"model": "gpt-4o"}
     )
     
     agent = ag2_wrapper.create_agent(config)
@@ -59,7 +59,7 @@ def test_create_invalid_agent_type(ag2_wrapper):
         title="Invalid Title",
         background="Invalid background",
         agent_type="invalid_type",
-        llm_config={"model": "gpt-4"}
+        llm_config={"model": "gpt-4o"}
     )
     
     with pytest.raises(ValueError) as exc_info:

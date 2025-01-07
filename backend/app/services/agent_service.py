@@ -64,3 +64,15 @@ class AgentService:
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
+
+    async def create_system_agent(self, name: str, background: str) -> AgentInDB:
+        """Create a system agent record for tracking manager/system messages"""
+        agent_data = AgentCreate(
+            name=name,
+            title="System Agent",
+            background=background,
+            agent_type="system",
+            llm_config={},
+            tool_config=None
+        )
+        return self.create_agent(agent_data)
