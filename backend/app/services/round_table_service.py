@@ -117,99 +117,119 @@ class RoundTableService:
             agent_name_to_id[ag2_agent.name] = agent_data.id
             print(f"Created agent mapping: {ag2_agent.name} -> {agent_data.id}")
 
-        # Format initial message
-        initial_message = self._format_initial_message(round_table, prompt)
-
-        # Create group chat with proper settings
-        group_chat_settings = {
-            "max_round": round_table.settings.get("max_round", 12),  # Use consistent parameter name
-            "speaker_selection_method": round_table.settings.get("speaker_selection_method", "round_robin"),
-            "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", False),
-            "send_introductions": round_table.settings.get("send_introductions", True)
-        }
-
-        # Initialize the group chat with the first message
-        group_chat = self.ag2_wrapper.create_group_chat(
-            ag2_agents,
-            group_chat_settings
-        )
-
-        # Create the GroupChatManager to coordinate the discussion
-        manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
-
-        # Store the initial message from the first agent
-        self._store_message({
-            "round_table_id": round_table_id,
-            "agent_id": participants[0]["agent"].id,  # First agent starts
-            "content": initial_message,
-            "message_type": "introduction"
-        })
-
-        # Update round table status to in_progress
-        round_table.status = "in_progress"
-        self.db.commit()
-
-        # Define message callback that correctly maps sender to DB agent
-        def message_callback(message: Dict) -> None:
-            if not message.get("content"):
-                return
-                
-            # Get the sender's name from the message
-            sender_name = message.get("name")
-            print(f"Processing message from sender: {sender_name}")
-            print(f"Available agent mappings: {agent_name_to_id}")
+        try:
+            # Format initial message
+            initial_message = {
+                "role": "system",
+                "content": self._format_initial_message(round_table, prompt),
+                "name": "system"
+            }
             
-            # Find the corresponding participant agent using the name mapping
-            agent_id = agent_name_to_id.get(sender_name)
-            if not agent_id:
-                print(f"Warning: Could not find agent ID for sender {sender_name}, using first agent")
-                agent_id = participants[0]["agent"].id
-
-            # Store the message
+            # Store the initial message
             self._store_message({
                 "round_table_id": round_table_id,
-                "agent_id": agent_id,
-                "content": message.get("content", ""),
-                "message_type": "discussion"
+                "agent_id": participants[0]["agent"].id,
+                "content": initial_message["content"],
+                "message_type": "introduction"
             })
 
-        # Register callback for all agents
-        for agent in ag2_agents:
-            agent.register_reply(
-                reply_func=lambda recipient, messages, sender, config: (
-                    False, 
-                    message_callback({
-                        "name": messages[-1].get("name") if messages and len(messages) > 0 else sender.name,
-                        "content": messages[-1].get("content", "") if messages and len(messages) > 0 else ""
-                    }) if messages and len(messages) > 0 else None
-                ),
-                trigger=lambda _: True
+            # Update round table status
+            round_table.status = "in_progress"
+            self.db.commit()
+
+            # Define message callback
+            def message_callback(message: Dict) -> None:
+                if not message.get("content"):
+                    return
+                    
+                sender_name = message.get("name")
+                agent_id = agent_name_to_id.get(sender_name)
+                if not agent_id:
+                    agent_id = participants[0]["agent"].id
+
+                self._store_message({
+                    "round_table_id": round_table_id,
+                    "agent_id": agent_id,
+                    "content": message.get("content", ""),
+                    "message_type": "discussion"
+                })
+
+            # Register reply function for each agent
+            for agent in ag2_agents:
+                def create_reply_func(agent_name):
+                    async def reply_func(recipient, messages, sender, config):
+                        if messages and len(messages) > 0:
+                            last_msg = messages[-1]
+                            msg = {
+                                "name": last_msg.get("name", agent_name),
+                                "content": last_msg.get("content", "")
+                            }
+                        else:
+                            msg = {
+                                "name": agent_name,
+                                "content": "Starting the discussion."
+                            }
+                        
+                        message_callback(msg)
+                        return False, None
+                    
+                    return reply_func
+
+                agent.register_reply(
+                    reply_func=create_reply_func(agent.name),
+                    trigger=lambda _: True
+                )
+
+            print(f"\n=== Starting Group Chat ===")
+            
+            # Create group chat with minimal settings
+            group_chat = self.ag2_wrapper.create_group_chat(
+                agents=ag2_agents,
+                settings={}  # Use defaults from wrapper
+            )
+            
+            # Set initial messages
+            group_chat.messages = [
+                initial_message,
+                {
+                    "role": "user",
+                    "content": "Let's begin the discussion.",
+                    "name": ag2_agents[0].name
+                }
+            ]
+
+            # Create manager
+            manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
+
+            # Start the discussion
+            result = await manager.a_run_chat(
+                messages=group_chat.messages,
+                sender=ag2_agents[0]
             )
 
-        # Initialize the messages list with the first message
-        first_message = {
-            "role": "user",
-            "content": initial_message,
-            "name": ag2_agents[0].name
-        }
-        group_chat.messages = [first_message]
+            # Update round table status
+            round_table.status = "completed"
+            round_table.completed_at = datetime.utcnow()
+            self.db.commit()
 
-        # Start discussion using the first agent's message
-        result = await manager.a_run_chat(
-            messages=[first_message],  # Pass the initial message explicitly
-            sender=ag2_agents[0],  # First agent starts the discussion
-            config=group_chat  # Pass the GroupChat as config
-        )
+            return {
+                "chat_history": manager.groupchat.messages,
+                "summary": None
+            }
 
-        # Update round table status
-        round_table.status = "completed"
-        round_table.completed_at = datetime.utcnow()
-        self.db.commit()
-
-        return {
-            "chat_history": manager.groupchat.messages,
-            "summary": None  # Summary will be handled separately if needed
-        }
+        except Exception as e:
+            print(f"\n=== Error in Group Chat ===")
+            print(f"Error type: {type(e)}")
+            print(f"Error message: {str(e)}")
+            
+            # Update round table status on error
+            round_table.status = "error"
+            self.db.commit()
+            
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to run discussion: {str(e)}"
+            )
 
     def _format_initial_message(self, round_table, prompt: str) -> str:
         """Format the initial message with clear structure and guidelines"""
@@ -472,8 +492,7 @@ Begin the discussion by addressing the task directly."""
             # Start the discussion from where it left off
             result = await manager.a_run_chat(
                 messages=group_chat.messages,
-                sender=next_speaker,
-                config=group_chat
+                sender=next_speaker
             )
             print("Successfully resumed chat")
             

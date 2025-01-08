@@ -27,7 +27,7 @@ class LLMConfigManager:
                 }
             ]
         }
-        print(f"Initialized LLM config: {self.default_config}")
+        #print(f"Initialized LLM config: {self.default_config}")
 
     def get_active_config(self) -> Dict:
         """Get the current active LLM configuration"""
