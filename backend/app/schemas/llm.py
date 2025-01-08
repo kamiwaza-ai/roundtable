@@ -1,3 +1,5 @@
+# app/schemas/llm.py
+
 from typing import Optional, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field, validator
 import re
@@ -32,7 +34,8 @@ class OpenAIConfig(BaseModel):
 
 class KamiwazaConfig(BaseModel):
     """Kamiwaza configuration"""
-    model: str
+    model_name: str  # This will be the display name
+    model_id: str    # This will be the full path ID from /v1/models
     host_name: str = "localhost"
     port: int
     temperature: float = 0.7
@@ -42,11 +45,9 @@ class KamiwazaConfig(BaseModel):
     def to_ag2_config(self) -> Dict[str, Any]:
         """Convert to AG2 format"""
         return {
-            "model": self.model,
-            "base_url": f"http://{self.host_name}:{self.port}",
-            "api_key": "kamiwaza_model"
+            "model": self.model_id,  # Use full path ID here
+            "base_url": f"http://{self.host_name}:{self.port}/v1"
         }
-
 class LLMConfig(BaseModel):
     """Combined LLM configuration"""
     azure_config: Optional[AzureOpenAIConfig] = None
