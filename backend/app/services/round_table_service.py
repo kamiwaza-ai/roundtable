@@ -117,6 +117,9 @@ class RoundTableService:
             agent_name_to_id[ag2_agent.name] = agent_data.id
             print(f"Created agent mapping: {ag2_agent.name} -> {agent_data.id}")
 
+        # Format initial message
+        initial_message = self._format_initial_message(round_table, prompt)
+
         # Create group chat with proper settings
         group_chat_settings = {
             "max_round": round_table.settings.get("max_round", 12),  # Use consistent parameter name
@@ -124,7 +127,8 @@ class RoundTableService:
             "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", False),
             "send_introductions": round_table.settings.get("send_introductions", True)
         }
-        
+
+        # Initialize the group chat with the first message
         group_chat = self.ag2_wrapper.create_group_chat(
             ag2_agents,
             group_chat_settings
@@ -132,9 +136,6 @@ class RoundTableService:
 
         # Create the GroupChatManager to coordinate the discussion
         manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
-
-        # Format initial message
-        initial_message = self._format_initial_message(round_table, prompt)
 
         # Store the initial message from the first agent
         self._store_message({
@@ -178,23 +179,24 @@ class RoundTableService:
                 reply_func=lambda recipient, messages, sender, config: (
                     False, 
                     message_callback({
-                        "name": messages[-1].get("name") if messages and len(messages) > 0 else sender.name,  # Use message name or sender name
+                        "name": messages[-1].get("name") if messages and len(messages) > 0 else sender.name,
                         "content": messages[-1].get("content", "") if messages and len(messages) > 0 else ""
                     }) if messages and len(messages) > 0 else None
                 ),
                 trigger=lambda _: True
             )
 
-        # Initialize the group chat with the first message
-        group_chat.messages.append({
+        # Initialize the messages list with the first message
+        first_message = {
             "role": "user",
             "content": initial_message,
-            "name": ag2_agents[0].name  # Use first agent's name
-        })
+            "name": ag2_agents[0].name
+        }
+        group_chat.messages = [first_message]
 
         # Start discussion using the first agent's message
         result = await manager.a_run_chat(
-            messages=group_chat.messages,  # Use the initialized messages
+            messages=[first_message],  # Pass the initial message explicitly
             sender=ag2_agents[0],  # First agent starts the discussion
             config=group_chat  # Pass the GroupChat as config
         )

@@ -4,7 +4,7 @@ from functools import lru_cache
 import logging
 from pydantic import ValidationError
 
-from ..schemas.llm import LLMConfig, AzureOpenAIConfig, OpenAIConfig
+from ..schemas.llm import LLMConfig, AzureOpenAIConfig, OpenAIConfig, KamiwazaConfig
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,29 @@ class LLMConfigManager:
                 configs["azure_config"] = AzureOpenAIConfig(
                     api_key=azure_key,
                     azure_endpoint=azure_endpoint,
-                    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview"),
-                    model=os.getenv("AZURE_OPENAI_MODEL", "gpt-4o-mini"),
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+                    model=os.getenv("AZURE_OPENAI_MODEL", "gpt-4o"),
                     temperature=float(os.getenv("AZURE_OPENAI_TEMPERATURE", "0.7"))
                 )
                 logger.info("Azure OpenAI configuration initialized")
             except ValidationError as e:
                 logger.warning(f"Failed to initialize Azure OpenAI configuration: {e}")
+        
+        # Try Kamiwaza configuration
+        kamiwaza_port = os.getenv("KAMIWAZA_PORT")
+        kamiwaza_model = os.getenv("KAMIWAZA_MODEL")
+        if kamiwaza_port and kamiwaza_model:
+            try:
+                configs["kamiwaza_config"] = KamiwazaConfig(
+                    model=kamiwaza_model,
+                    host_name=os.getenv("KAMIWAZA_HOST", "localhost"),
+                    port=int(kamiwaza_port),
+                    temperature=float(os.getenv("KAMIWAZA_TEMPERATURE", "0.7")),
+                    max_tokens=int(os.getenv("KAMIWAZA_MAX_TOKENS", "150"))
+                )
+                logger.info("Kamiwaza configuration initialized")
+            except ValidationError as e:
+                logger.warning(f"Failed to initialize Kamiwaza configuration: {e}")
         
         # Fallback to OpenAI configuration
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -43,7 +59,7 @@ class LLMConfigManager:
             try:
                 configs["openai_config"] = OpenAIConfig(
                     api_key=openai_key,
-                    model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                    model=os.getenv("OPENAI_MODEL", "gpt-4"),
                     temperature=float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
                 )
                 logger.info("OpenAI configuration initialized")
@@ -75,6 +91,10 @@ class LLMConfigManager:
                     "api_version": active_config.api_version,
                 }]
             }
+        elif isinstance(active_config, KamiwazaConfig):
+            return {
+                "config_list": [active_config.to_ag2_config()]
+            }
         elif isinstance(active_config, OpenAIConfig):
             return {
                 "config_list": [{
@@ -99,6 +119,13 @@ class LLMConfigManager:
                 "azure_endpoint": active_config.azure_endpoint,
                 "api_version": active_config.api_version,
                 "model": active_config.model,
+                "temperature": active_config.temperature
+            }
+        elif isinstance(active_config, KamiwazaConfig):
+            return {
+                "model": active_config.model,
+                "base_url": f"http://{active_config.host_name}:{active_config.port}",
+                "api_key": "kamiwaza_model",
                 "temperature": active_config.temperature
             }
         elif isinstance(active_config, OpenAIConfig):

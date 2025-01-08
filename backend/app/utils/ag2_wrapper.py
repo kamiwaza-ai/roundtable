@@ -24,17 +24,13 @@ class AG2Wrapper:
                     "api_key": agent_llm_config["api_key"],
                     "azure_endpoint": endpoint,
                     "api_version": agent_llm_config.get("api_version", "2024-02-15-preview"),
-                    "api_type": "azure",
-                    "temperature": agent_llm_config.get("temperature", 0.7),
-                    "max_tokens": agent_llm_config.get("max_tokens", 150)
+                    "api_type": "azure"
                 }]
             elif "provider" in agent_llm_config and agent_llm_config["provider"] == "kamiwaza":
+                # Simplified config for Kamiwaza following AG2 docs
                 config_list = [{
                     "model": agent_llm_config["model_name"],
-                    "base_url": f"http://{agent_llm_config.get('host_name', 'localhost')}:{agent_llm_config['port']}/v1",
-                    "api_key": "kamiwaza_model",
-                    "temperature": agent_llm_config.get("temperature", 0.7),
-                    "max_tokens": agent_llm_config.get("max_tokens", 150)
+                    "base_url": f"http://{agent_llm_config.get('host_name', 'localhost')}:{agent_llm_config['port']}/v1"
                 }]
             else:
                 # Fallback to global config
@@ -74,6 +70,14 @@ class AG2Wrapper:
             raise ValueError(f"Unsupported agent type: {agent_data.agent_type}")
             
         print(f"Created agent with name: {agent.name}")
+        print(f"Verifying agent config - llm_config: {getattr(agent, 'llm_config', None)}")
+        print(f"Verifying agent config - client: {getattr(agent, 'client', None)}")
+        
+        # Force set the config if it's not sticking
+        if not hasattr(agent, 'llm_config'):
+            print("WARNING: Agent missing llm_config, forcing it")
+            agent.llm_config = base_config
+            
         return agent
 
     def _format_system_message(self, message: str) -> str:
@@ -128,15 +132,51 @@ Follow these guidelines in all responses:
         if not hasattr(group_chat, 'max_round'):
             raise ValueError("GroupChat must be properly initialized with max_round")
             
-        base_config = self.llm_config_manager.get_active_config()
-        print(f"LLM config for manager: {base_config}")
+        # Use the first agent's config for the manager
+        first_agent = group_chat.agents[0]
+        print(f"First agent: {first_agent}")
+        print(f"First agent type: {type(first_agent)}")
+        print(f"First agent attributes: {dir(first_agent)}")
+        print(f"First agent llm_config: {getattr(first_agent, 'llm_config', None)}")
         
-        # Create a clean config without trying to merge
-        llm_config = {
-            "config_list": base_config.get("config_list", []),
-            "temperature": 0.7,
-            "max_tokens": 150
-        }
+        if hasattr(first_agent, "llm_config") and first_agent.llm_config:
+            llm_config = first_agent.llm_config
+            print(f"Using first agent's llm_config: {llm_config}")
+            
+            # Check if this is a Kamiwaza config
+            if (
+                isinstance(llm_config.get("config_list"), list) and 
+                len(llm_config["config_list"]) > 0 and
+                "base_url" in llm_config["config_list"][0] and
+                "/v1" in llm_config["config_list"][0]["base_url"]
+            ):
+                print("Detected Kamiwaza config, using as is")
+                # Use Kamiwaza config as is, but ensure it's in the right format
+                config = llm_config["config_list"][0]
+                llm_config = {
+                    "model": config["model"],
+                    "base_url": config["base_url"]
+                }
+            elif (
+                isinstance(llm_config.get("config_list"), list) and
+                len(llm_config["config_list"]) > 0 and
+                llm_config["config_list"][0].get("api_type") == "azure"
+            ):
+                print("Detected Azure config, using as is")
+                # Use Azure config as is
+                pass
+            else:
+                print("Unknown config type, falling back to global config")
+                # Fallback to global config
+                base_config = self.llm_config_manager.get_active_config()
+                llm_config = base_config
+        else:
+            print("No llm_config found, using fallback config")
+            # Fallback to global config
+            base_config = self.llm_config_manager.get_active_config()
+            llm_config = base_config
+            
+        print(f"Final LLM config for manager: {llm_config}")
             
         # Create manager exactly like the docs example
         manager = autogen.GroupChatManager(
