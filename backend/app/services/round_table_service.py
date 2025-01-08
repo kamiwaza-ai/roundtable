@@ -288,3 +288,201 @@ Begin the discussion by addressing the task directly."""
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
+
+    async def pause_discussion(self, round_table_id: UUID) -> Dict:
+        """Pause a round table discussion and save its state"""
+        print(f"Attempting to pause discussion for round table: {round_table_id}")
+        round_table = self.repository.get(round_table_id)
+        if not round_table:
+            print(f"Round table not found: {round_table_id}")
+            raise HTTPException(status_code=404, detail="Round table not found")
+        
+        if round_table.status != "in_progress":
+            print(f"Invalid status for pause. Current status: {round_table.status}")
+            raise HTTPException(status_code=400, detail="Round table is not in progress")
+
+        # Get the current messages and participants
+        messages = self.get_discussion_history(round_table_id)
+        participants = self._get_participants(round_table_id)
+        print(f"Retrieved {len(messages)} messages for state storage")
+        
+        # Create agent ID to name mapping
+        agent_id_to_name = {
+            participant["agent"].id: participant["agent"].name 
+            for participant in participants
+        }
+        
+        # Convert messages to a serializable format
+        try:
+            # Convert each message to AG2 format with agent names
+            serialized_messages = []
+            for msg in messages:
+                agent_name = agent_id_to_name.get(msg.agent_id, "unknown")
+                serialized_messages.append({
+                    "role": "assistant",  # All stored messages are from assistants
+                    "content": msg.content,
+                    "name": agent_name,
+                    "function_call": None
+                })
+            print(f"Successfully serialized {len(serialized_messages)} messages")
+        except Exception as e:
+            print(f"Error serializing messages: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to serialize messages: {str(e)}")
+        
+        # Update round table status and save state
+        try:
+            round_table.status = "paused"
+            round_table.messages_state = serialized_messages
+            self.db.commit()
+            print(f"Successfully paused round table {round_table_id}")
+        except Exception as e:
+            print(f"Error saving pause state: {str(e)}")
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to save pause state: {str(e)}")
+        
+        # Signal to the frontend that the discussion is paused
+        return {
+            "status": "paused",
+            "round_table_id": round_table_id,
+            "message_count": len(messages)
+        }
+
+    async def resume_discussion(self, round_table_id: UUID) -> Dict:
+        """Resume a paused round table discussion"""
+        print(f"Attempting to resume discussion for round table: {round_table_id}")
+        round_table = self.repository.get(round_table_id)
+        if not round_table:
+            print(f"Round table not found: {round_table_id}")
+            raise HTTPException(status_code=404, detail="Round table not found")
+        
+        if round_table.status != "paused":
+            print(f"Invalid status for resume. Current status: {round_table.status}")
+            raise HTTPException(status_code=400, detail="Round table is not paused")
+            
+        if not round_table.messages_state:
+            print(f"No saved message state found for round table: {round_table_id}")
+            raise HTTPException(status_code=400, detail="No saved state found")
+
+        print(f"Retrieved saved state with {len(round_table.messages_state)} messages")
+
+        # Get participants
+        participants = self._get_participants(round_table_id)
+        if not participants:
+            print(f"No participants found for round table: {round_table_id}")
+            raise HTTPException(
+                status_code=400, 
+                detail="No participants found for this round table"
+            )
+
+        print(f"Found {len(participants)} participants")
+
+        # Create AG2 agents and group chat like in run_discussion
+        try:
+            ag2_agents = []
+            agent_name_to_id = {}
+            for participant in participants:
+                agent_data = participant["agent"]
+                ag2_agent = self.ag2_wrapper.create_agent(agent_data)
+                ag2_agents.append(ag2_agent)
+                agent_name_to_id[ag2_agent.name] = agent_data.id
+                print(f"Recreated agent: {ag2_agent.name} -> {agent_data.id}")
+
+            # Create group chat with proper settings
+            print("Creating group chat with settings:", {
+                "max_round": round_table.settings.get("max_round", 12),
+                "speaker_selection_method": round_table.settings.get("speaker_selection_method", "auto"),
+                "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", True),
+                "send_introductions": False
+            })
+
+            group_chat = self.ag2_wrapper.create_group_chat(
+                ag2_agents,
+                {
+                    "max_round": round_table.settings.get("max_round", 12),
+                    "speaker_selection_method": round_table.settings.get("speaker_selection_method", "auto"),
+                    "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", True),
+                    "send_introductions": False  # Don't send introductions when resuming
+                }
+            )
+
+            # Create the GroupChatManager
+            manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
+            print("Successfully created GroupChatManager")
+
+        except Exception as e:
+            print(f"Error setting up AG2 components: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to setup discussion: {str(e)}")
+
+        # Register message callbacks
+        def message_callback(message: Dict) -> None:
+            if not message.get("content"):
+                return
+                
+            sender_name = message.get("name")
+            agent_id = agent_name_to_id.get(sender_name)
+            if not agent_id:
+                print(f"Warning: Could not find agent ID for sender {sender_name}, using first agent")
+                agent_id = participants[0]["agent"].id
+
+            self._store_message({
+                "round_table_id": round_table_id,
+                "agent_id": agent_id,
+                "content": message.get("content", ""),
+                "message_type": "discussion"
+            })
+
+        for agent in ag2_agents:
+            agent.register_reply(
+                reply_func=lambda recipient, messages, sender, config: (
+                    False, 
+                    message_callback({
+                        "name": messages[-1].get("name") if messages and len(messages) > 0 else sender.name,
+                        "content": messages[-1].get("content", "") if messages and len(messages) > 0 else ""
+                    }) if messages and len(messages) > 0 else None
+                ),
+                trigger=lambda _: True
+            )
+
+        # Update status to in_progress
+        round_table.status = "in_progress"
+        self.db.commit()
+        print(f"Updated round table status to in_progress")
+
+        # Resume the chat with saved state
+        try:
+            print(f"Attempting to resume chat with {len(round_table.messages_state)} messages")
+            # Initialize the group chat with the saved messages
+            group_chat.messages = round_table.messages_state
+            
+            # Get the last message to determine the next speaker
+            last_message = round_table.messages_state[-1] if round_table.messages_state else None
+            next_speaker = None
+            if last_message:
+                last_speaker_name = last_message.get("name")
+                for agent in ag2_agents:
+                    if agent.name == last_speaker_name:
+                        next_speaker = agent
+                        break
+            
+            if not next_speaker:
+                next_speaker = ag2_agents[0]
+            
+            # Start the discussion from where it left off
+            result = await manager.a_run_chat(
+                messages=group_chat.messages,
+                sender=next_speaker,
+                config=group_chat
+            )
+            print("Successfully resumed chat")
+            
+            return {
+                "status": "resumed",
+                "round_table_id": round_table_id,
+                "chat_history": manager.groupchat.messages
+            }
+            
+        except Exception as e:
+            print(f"Error resuming chat: {str(e)}")
+            round_table.status = "paused"  # Revert status if resume fails
+            self.db.commit()
+            raise HTTPException(status_code=500, detail=f"Failed to resume discussion: {str(e)}")

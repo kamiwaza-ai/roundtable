@@ -20,6 +20,7 @@ class RoundTable(Base):
         "allow_repeat_speaker": True,
         "send_introductions": True
     })
+    messages_state = Column(JSON, nullable=True)  # Store serialized chat state for pause/resume
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 

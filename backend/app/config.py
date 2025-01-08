@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 from dotenv import load_dotenv
 import os
+from typing import Optional
 
 # Load the .env file explicitly
 load_dotenv()
@@ -27,9 +28,13 @@ class Settings(BaseSettings):
     azure_openai_model: str
     azure_openai_api_version: str
 
+    # Kamiwaza API URI
+    kamiwaza_api_uri: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
+        case_sensitive = False
 
 
 @lru_cache()

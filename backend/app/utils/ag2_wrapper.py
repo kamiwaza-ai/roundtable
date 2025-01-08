@@ -11,16 +11,41 @@ class AG2Wrapper:
 
     def create_agent(self, agent_data: AgentCreate) -> autogen.ConversableAgent:
         """Create an AG2 agent based on configuration"""
-        llm_config = self.llm_config_manager.get_active_config()
+        # Use the agent's llm_config, falling back to global config if needed
+        agent_llm_config = agent_data.llm_config
         
-        # Add response constraints to base config
-        base_config = {
-            "config_list": [{
-                **config,
-                "temperature": 0.7,  # Reduce randomness
-                "max_tokens": 150,  # Limit response length
-            } for config in llm_config.get("config_list", [])]
-        }
+        # If agent config doesn't have config_list, create it from the config
+        if "config_list" not in agent_llm_config:
+            if "api_type" in agent_llm_config and agent_llm_config["api_type"] == "azure":
+                model = agent_llm_config.get("model", "gpt-4o")
+                endpoint = agent_llm_config['azure_endpoint'].rstrip('/')  # Remove trailing slash
+                config_list = [{
+                    "model": model,
+                    "api_key": agent_llm_config["api_key"],
+                    "azure_endpoint": endpoint,
+                    "api_version": agent_llm_config.get("api_version", "2024-02-15-preview"),
+                    "api_type": "azure",
+                    "temperature": agent_llm_config.get("temperature", 0.7),
+                    "max_tokens": agent_llm_config.get("max_tokens", 150)
+                }]
+            elif "provider" in agent_llm_config and agent_llm_config["provider"] == "kamiwaza":
+                config_list = [{
+                    "model": agent_llm_config["model_name"],
+                    "base_url": f"http://{agent_llm_config.get('host_name', 'localhost')}:{agent_llm_config['port']}/v1",
+                    "api_key": "kamiwaza_model",
+                    "temperature": agent_llm_config.get("temperature", 0.7),
+                    "max_tokens": agent_llm_config.get("max_tokens", 150)
+                }]
+            else:
+                # Fallback to global config
+                global_config = self.llm_config_manager.get_active_config()
+                config_list = global_config.get("config_list", [])
+                
+            base_config = {"config_list": config_list}
+        else:
+            base_config = agent_llm_config
+
+        print(f"Using LLM config: {base_config}")
 
         # Format system message with constraints
         system_message = self._format_system_message(agent_data.background)
@@ -29,14 +54,11 @@ class AG2Wrapper:
         
         # Handle different agent types
         if agent_data.agent_type == "system":
-            # For system agents, we create an AssistantAgent instead of GroupChatManager
-            # since GroupChatManager requires a groupchat during initialization
             agent = autogen.AssistantAgent(
                 name=agent_data.name,
                 system_message=system_message,
                 llm_config=base_config
             )
-        # Treat "standard" as an alias for "assistant"
         elif agent_data.agent_type in ["assistant", "standard"]:
             agent = autogen.AssistantAgent(
                 name=agent_data.name,

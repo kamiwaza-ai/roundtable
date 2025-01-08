@@ -52,6 +52,40 @@ async def run_discussion(
     service = RoundTableService(db)
     return await service.run_discussion(round_table_id, request.discussion_prompt)
 
+@router.post("/{round_table_id}/pause")
+async def pause_discussion(
+    round_table_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Pause a round table discussion
+    
+    Args:
+        round_table_id: UUID of the round table
+        db: Database session
+        
+    Returns:
+        Dict containing status and round_table_id
+    """
+    service = RoundTableService(db)
+    return await service.pause_discussion(round_table_id)
+
+@router.post("/{round_table_id}/resume")
+async def resume_discussion(
+    round_table_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Resume a paused round table discussion
+    
+    Args:
+        round_table_id: UUID of the round table
+        db: Database session
+        
+    Returns:
+        Dict containing status, round_table_id, and chat_history
+    """
+    service = RoundTableService(db)
+    return await service.resume_discussion(round_table_id)
+
 @router.get("/", response_model=List[RoundTableInDB])
 async def get_all_round_tables(
     db: Session = Depends(get_db)

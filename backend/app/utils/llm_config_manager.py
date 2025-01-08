@@ -10,18 +10,22 @@ class LLMConfigManager:
 
     def initialize_from_env(self):
         """Initialize configuration from environment variables"""
+        model = os.getenv("AZURE_OPENAI_MODEL", "gpt-4o")
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip('/')  # Remove trailing slash
+        
         self.default_config = {
             "temperature": 0.7,
             "config_list": [
                 {
-                    "model": os.getenv("AZURE_OPENAI_MODEL", "gpt-4o-mini"),
+                    "model": model,
                     "api_key": os.getenv("AZURE_OPENAI_API_KEY"),
-                    "azure_endpoint": os.getenv("AZURE_OPENAI_ENDPOINT"),
-                    "api_version": "2024-02-15-preview",
+                    "azure_endpoint": endpoint,
+                    "api_version": os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
                     "api_type": "azure"
                 }
             ]
         }
+        print(f"Initialized LLM config: {self.default_config}")
 
     def get_active_config(self) -> Dict:
         """Get the current active LLM configuration"""

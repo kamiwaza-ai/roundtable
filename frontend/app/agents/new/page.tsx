@@ -1,31 +1,66 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { KamiwazaModel } from "@/lib/api-types";
+
+const AZURE_MODELS = ["gpt-4o", "gpt-4o-mini"];
 
 export default function NewAgentPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [background, setBackground] = useState("");
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [modelType, setModelType] = useState<"azure" | "kamiwaza">("azure");
+  const [azureModel, setAzureModel] = useState("gpt-4o-mini");
+  const [kamiwazaModels, setKamiwazaModels] = useState<KamiwazaModel[]>([]);
+  const [selectedKamiwazaModel, setSelectedKamiwazaModel] = useState<KamiwazaModel | null>(null);
   const [temperature, setTemperature] = useState(0.7);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    // Fetch available Kamiwaza models
+    async function fetchKamiwazaModels() {
+      try {
+        const models = await api.getKamiwazaModels();
+        setKamiwazaModels(models);
+        if (models.length > 0) {
+          setSelectedKamiwazaModel(models[0]);
+        }
+      } catch (err) {
+        console.error("Failed to fetch Kamiwaza models:", err);
+      }
+    }
+    fetchKamiwazaModels();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    const llm_config = modelType === "azure" 
+      ? {
+          api_type: "azure" as const,
+          model: azureModel,
+          api_key: process.env.NEXT_PUBLIC_AZURE_OPENAI_API_KEY || "",
+          azure_endpoint: process.env.NEXT_PUBLIC_AZURE_OPENAI_ENDPOINT || "",
+          temperature,
+        }
+      : {
+          provider: "kamiwaza" as const,
+          model_name: selectedKamiwazaModel?.model_name || "",
+          port: selectedKamiwazaModel?.instances[0]?.port || 0,
+          temperature,
+        };
 
     const agentData = {
       name,
       title,
       background,
       agent_type: "assistant",
-      llm_config: {
-        model,
-        temperature,
-      },
+      llm_config,
       tool_config: null,
     };
 
@@ -102,15 +137,55 @@ export default function NewAgentPage() {
         </div>
 
         <div>
-          <label className="block mb-1 font-semibold">Model</label>
-          <input
+          <label className="block mb-1 font-semibold">Model Type</label>
+          <select
             className={cn(
               "w-full border border-border rounded px-2 py-1"
             )}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          />
+            value={modelType}
+            onChange={(e) => setModelType(e.target.value as "azure" | "kamiwaza")}
+          >
+            <option value="azure">Azure OpenAI</option>
+            <option value="kamiwaza">Kamiwaza</option>
+          </select>
         </div>
+
+        {modelType === "azure" ? (
+          <div>
+            <label className="block mb-1 font-semibold">Azure Model</label>
+            <select
+              className={cn(
+                "w-full border border-border rounded px-2 py-1"
+              )}
+              value={azureModel}
+              onChange={(e) => setAzureModel(e.target.value)}
+            >
+              {AZURE_MODELS.map(model => (
+                <option key={model} value={model}>{model}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="block mb-1 font-semibold">Kamiwaza Model</label>
+            <select
+              className={cn(
+                "w-full border border-border rounded px-2 py-1"
+              )}
+              value={selectedKamiwazaModel?.model_name || ""}
+              onChange={(e) => {
+                const model = kamiwazaModels.find(m => m.model_name === e.target.value);
+                setSelectedKamiwazaModel(model || null);
+              }}
+            >
+              {kamiwazaModels.map(model => (
+                <option key={model.model_name} value={model.model_name}>
+                  {model.model_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="block mb-1 font-semibold">Temperature</label>

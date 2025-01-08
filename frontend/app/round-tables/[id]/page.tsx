@@ -1,181 +1,285 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { usePathname } from "next/navigation";
-import { RoundTable, Message, Agent } from "@/lib/api-types";
-import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
+import { RoundTable, Message, Agent } from '@/lib/api-types';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import { useToast } from '@/components/ui/use-toast';
+import { Loader2, User } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { formatDistanceStrict } from 'date-fns';
 
 const POLLING_INTERVAL = 2000; // 2 seconds
 
-export default function RoundTablePage() {
-    const path = usePathname();
-    const roundTableId = path.split("/").pop();
-
+export default function RoundTableDetailPage() {
+    const params = useParams();
+    const { toast } = useToast();
     const [roundTable, setRoundTable] = useState<RoundTable | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
-    const [agents, setAgents] = useState<Record<string, Agent>>({});
-    const [discussionPrompt, setDiscussionPrompt] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [prompt, setPrompt] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const [isPolling, setIsPolling] = useState(false);
 
     const loadRoundTable = async () => {
-        if (!roundTableId) return;
         try {
             const tables = await api.getRoundTables();
-            const table = tables.find((rt) => rt.id === roundTableId);
-            if (!table) {
-                throw new Error("Round table not found");
+            const table = tables.find(t => t.id === params.id);
+            if (table) {
+                setRoundTable(table);
+                // Start polling if discussion is in progress
+                setIsPolling(table.status === 'in_progress');
             }
-            setRoundTable(table);
-            
-            // Start polling if the discussion is in progress
-            if (table.status !== "completed") {
-                setIsPolling(true);
-            }
-
-            // Load agents for the messages
-            const agentList = await api.getAgents();
-            const agentMap = agentList.reduce((acc, agent) => {
-                acc[agent.id] = agent;
-                return acc;
-            }, {} as Record<string, Agent>);
-            setAgents(agentMap);
         } catch (error) {
-            setError(error instanceof Error ? error.message : "Failed to load round table");
-        } finally {
-            setLoading(false);
+            console.error('Failed to load round table:', error);
+            toast({
+                title: "Error",
+                description: "Failed to load round table",
+                variant: "destructive"
+            });
         }
     };
 
     const loadMessages = useCallback(async () => {
-        if (!roundTableId) return;
         try {
-            const data = await api.getRoundTableMessages(roundTableId);
+            const data = await api.getRoundTableMessages(params.id as string);
             setMessages(data);
-
-            // If we have a roundTable and it's completed, stop polling
-            if (roundTable?.status === "completed") {
-                setIsPolling(false);
-            }
         } catch (error) {
-            console.error("Failed to load messages:", error);
+            console.error('Failed to load messages:', error);
+            toast({
+                title: "Error",
+                description: "Failed to load messages",
+                variant: "destructive"
+            });
         }
-    }, [roundTableId, roundTable?.status]);
+    }, [params.id, toast]);
+
+    const loadAgents = useCallback(async () => {
+        try {
+            const data = await api.getAgents();
+            setAgents(data);
+        } catch (error) {
+            console.error('Failed to load agents:', error);
+            toast({
+                title: "Error",
+                description: "Failed to load agents",
+                variant: "destructive"
+            });
+        }
+    }, [toast]);
 
     // Initial load
     useEffect(() => {
         loadRoundTable();
         loadMessages();
-    }, [roundTableId, loadMessages]);
+        loadAgents();
+    }, [loadMessages, loadAgents]);
 
     // Polling effect
     useEffect(() => {
         if (!isPolling) return;
 
-        loadMessages();
-        const interval = setInterval(async () => {
+        const pollData = async () => {
             await loadMessages();
-            // Refresh round table to check status
-            await loadRoundTable();
-        }, POLLING_INTERVAL);
+            await loadRoundTable(); // Also check if status has changed
+        };
+
+        // Poll immediately
+        pollData();
+
+        // Set up polling interval
+        const interval = setInterval(pollData, POLLING_INTERVAL);
 
         return () => clearInterval(interval);
     }, [isPolling, loadMessages]);
 
     const handleStartDiscussion = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!roundTableId || !discussionPrompt) return;
+        if (!prompt) return;
 
+        setIsLoading(true);
         try {
-            // Start the discussion
-            await api.startDiscussion(roundTableId, discussionPrompt);
-            setDiscussionPrompt("");
-            setIsPolling(true);
+            await api.startDiscussion(params.id as string, prompt);
+            await loadRoundTable();
+            await loadMessages();
+            setPrompt('');
+            setIsPolling(true); // Start polling when discussion starts
         } catch (error) {
-            setError(error instanceof Error ? error.message : "Failed to start discussion");
+            console.error('Failed to start discussion:', error);
+            toast({
+                title: "Error",
+                description: "Failed to start discussion",
+                variant: "destructive"
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    if (loading) {
-        return <div className="p-4">Loading Round Table...</div>;
-    }
-
-    if (error) {
-        return <div className="p-4 text-red-500">Error: {error}</div>;
-    }
+    const getDurationDisplay = () => {
+        if (!roundTable) return '--';
+        
+        const start = new Date(roundTable.created_at);
+        const end = roundTable.completed_at 
+            ? new Date(roundTable.completed_at)
+            : new Date();
+            
+        return formatDistanceStrict(start, end, { addSuffix: false });
+    };
 
     if (!roundTable) {
-        return <div className="p-4">Round table not found</div>;
+        return <div>Loading...</div>;
     }
 
     return (
-        <div className="container mx-auto py-8 space-y-6">
-            <div>
+        <div className="container mx-auto py-8">
+            <div className="mb-8">
                 <h1 className="text-3xl font-bold mb-2">{roundTable.title}</h1>
                 <p className="text-gray-600 mb-4">{roundTable.context}</p>
-                <div className="text-sm text-gray-500 flex items-center gap-2">
-                    Status: {roundTable.status}
+                <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-full text-sm ${
+                        roundTable.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        roundTable.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                        roundTable.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                    }`}>
+                        {roundTable.status}
+                    </span>
                     {isPolling && (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                     )}
                 </div>
             </div>
 
-            {roundTable.status === "pending" && (
-                <div className="space-y-4">
-                    <h2 className="text-xl font-semibold">Start Discussion</h2>
-                    <form onSubmit={handleStartDiscussion} className="space-y-4">
-                        <div>
-                            <Textarea
-                                value={discussionPrompt}
-                                onChange={(e) => setDiscussionPrompt(e.target.value)}
-                                placeholder="Enter your discussion prompt..."
-                                className="min-h-[100px]"
-                                required
-                            />
-                        </div>
-                        <Button type="submit">Start Discussion</Button>
-                    </form>
-                </div>
-            )}
-
-            {messages.length > 0 && (
-                <div className="space-y-4">
-                    <h2 className="text-xl font-semibold">Discussion</h2>
-                    <div className="space-y-3 max-w-3xl">
-                        {messages.map((message) => {
-                            const agent = agents[message.agent_id];
-                            return (
-                                <div key={message.id} className="flex flex-col">
-                                    <div className="flex items-baseline gap-2 mb-1">
-                                        <span className="font-semibold text-sm">
-                                            {agent?.name || "Unknown Agent"}
-                                        </span>
-                                        <span className="text-xs text-gray-500">
-                                            {new Date(message.created_at).toLocaleTimeString()}
-                                        </span>
-                                    </div>
-                                    <div className="bg-gray-100 rounded-lg p-4 prose max-w-none">
-                                        {message.content}
-                                    </div>
+            <div className="flex gap-8 h-[calc(100vh-12rem)]">
+                {/* Left Panel - Chat */}
+                <div className="flex-1 max-w-[60%] overflow-y-auto pr-4">
+                    {roundTable.status === 'pending' && (
+                        <form onSubmit={handleStartDiscussion} className="mb-8">
+                            <div className="space-y-4">
+                                <div>
+                                    <Label htmlFor="prompt">Discussion Prompt</Label>
+                                    <Input
+                                        id="prompt"
+                                        value={prompt}
+                                        onChange={(e) => setPrompt(e.target.value)}
+                                        placeholder="Enter the discussion prompt..."
+                                        required
+                                    />
                                 </div>
-                            );
-                        })}
+                                <Button type="submit" disabled={isLoading}>
+                                    {isLoading ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Starting...
+                                        </>
+                                    ) : (
+                                        'Start Discussion'
+                                    )}
+                                </Button>
+                            </div>
+                        </form>
+                    )}
+
+                    <div className="space-y-4">
+                        {messages.length === 0 && isPolling && (
+                            <div className="flex items-center justify-center p-8 text-gray-500">
+                                <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+                                <span>Waiting for messages...</span>
+                            </div>
+                        )}
+                        
+                        <div className="space-y-4">
+                            {messages.map((message) => {
+                                const agent = agents.find(a => a.id === message.agent_id);
+                                if (!agent || message.message_type === 'introduction') return null;
+                                
+                                return (
+                                    <div key={message.id} className="flex items-start gap-4">
+                                        <Avatar>
+                                            <AvatarFallback className="bg-primary text-primary-foreground">
+                                                {agent.name.charAt(0)}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1">
+                                            <div className="mb-1">
+                                                <span className="font-semibold">{agent.name}</span>
+                                                <span className="text-sm text-gray-500 ml-2">{agent.title}</span>
+                                            </div>
+                                            <Card>
+                                                <CardContent className="p-4">
+                                                    <p className="text-gray-700">{message.content}</p>
+                                                </CardContent>
+                                            </Card>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
-            )}
 
-            {isPolling && messages.length === 0 && (
-                <div className="flex items-center justify-center p-8 text-gray-500">
-                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                    <span>Starting discussion...</span>
+                {/* Right Panel - Human Controls */}
+                <div className="w-[35%] space-y-6 sticky top-8">
+                    <Card>
+                        <CardContent className="p-6">
+                            <h2 className="text-xl font-semibold mb-4">Human Controls</h2>
+                            
+                            {/* Discussion Controls */}
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="text-sm font-medium mb-2">Discussion Controls</h3>
+                                    <div className="flex gap-2">
+                                        <Button 
+                                            variant={roundTable.status === 'paused' ? 'default' : 'secondary'}
+                                            className="w-full"
+                                        >
+                                            {roundTable.status === 'paused' ? 'Resume Discussion' : 'Pause Discussion'}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Interjection */}
+                                <div>
+                                    <h3 className="text-sm font-medium mb-2">Interjection</h3>
+                                    <div className="space-y-2">
+                                        <Input
+                                            placeholder="Type your message..."
+                                            className="w-full"
+                                        />
+                                        <Button className="w-full">
+                                            Send Message
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Discussion Stats */}
+                                <div className="pt-4 border-t">
+                                    <h3 className="text-sm font-medium mb-2">Discussion Stats</h3>
+                                    <div className="space-y-1 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Messages</span>
+                                            <span className="font-medium">{messages.length}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Status</span>
+                                            <span className="font-medium capitalize">{roundTable.status}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-500">Duration</span>
+                                            <span className="font-medium">{getDurationDisplay()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
-            )}
+            </div>
         </div>
     );
 }

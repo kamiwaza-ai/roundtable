@@ -1,4 +1,4 @@
-import { Agent, CreateAgentRequest, CreateRoundTableRequest, RoundTable, Message } from './api-types';
+import { Agent, CreateAgentRequest, CreateRoundTableRequest, RoundTable, Message, KamiwazaModel } from './api-types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -50,6 +50,30 @@ export const api = {
             }
         ),
     
+    pauseDiscussion: (roundTableId: string) =>
+        fetchApi<{ status: string, round_table_id: string, message_count: number }>(
+            `/round-tables/${roundTableId}/pause`,
+            {
+                method: 'POST'
+            }
+        ),
+    
+    resumeDiscussion: (roundTableId: string) =>
+        fetchApi<{ status: string, round_table_id: string, chat_history: any[] }>(
+            `/round-tables/${roundTableId}/resume`,
+            {
+                method: 'POST'
+            }
+        ),
+    
     getRoundTableMessages: (roundTableId: string) =>
         fetchApi<Message[]>(`/messages/round-table/${roundTableId}`),
+
+    getKamiwazaModels: async (): Promise<KamiwazaModel[]> => {
+        const response = await fetch(`${API_BASE}/kamiwaza/models`);
+        if (!response.ok) {
+            throw new Error("Failed to fetch Kamiwaza models");
+        }
+        return response.json();
+    },
 }; 
