@@ -2,8 +2,13 @@
 
 from typing import List, Optional, Dict, Callable
 import autogen
+import os
+from dotenv import load_dotenv
 from app.schemas.round_table import RoundTableSettings
 from app.schemas.agent import AgentCreate
+
+# Load environment variables
+load_dotenv()
 
 class AG2Wrapper:
     def __init__(self, llm_config_manager):
@@ -16,24 +21,40 @@ class AG2Wrapper:
         
         # If agent config doesn't have config_list, create it from the config
         if "config_list" not in agent_llm_config:
+            # Determine the config type and create appropriate config
             if "api_type" in agent_llm_config and agent_llm_config["api_type"] == "azure":
-                model = agent_llm_config.get("model", "gpt-4o")
-                endpoint = agent_llm_config['azure_endpoint'].rstrip('/')  # Remove trailing slash
+                # Fill in empty values from environment
+                api_key = agent_llm_config.get("api_key") or os.getenv("AZURE_OPENAI_API_KEY")
+                azure_endpoint = agent_llm_config.get("azure_endpoint") or os.getenv("AZURE_OPENAI_ENDPOINT")
+                model = agent_llm_config.get("model") or os.getenv("AZURE_OPENAI_MODEL", "gpt-4o")
+                api_version = agent_llm_config.get("api_version") or os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+                
+                if not (api_key and azure_endpoint):
+                    raise ValueError("Azure configuration is incomplete. Please provide api_key and azure_endpoint.")
+                
+                endpoint = azure_endpoint.rstrip('/')  # Remove trailing slash
                 config_list = [{
                     "model": model,
-                    "api_key": agent_llm_config["api_key"],
+                    "api_key": api_key,
                     "azure_endpoint": endpoint,
-                    "api_version": agent_llm_config.get("api_version", "2024-02-15-preview"),
+                    "api_version": api_version,
                     "api_type": "azure"
                 }]
             elif "provider" in agent_llm_config and agent_llm_config["provider"] == "kamiwaza":
-                # Simplified config for Kamiwaza following AG2 docs
+                port = agent_llm_config.get("port") or os.getenv("KAMIWAZA_PORT")
+                model = agent_llm_config.get("model_name") or os.getenv("KAMIWAZA_MODEL")
+                host = agent_llm_config.get("host_name") or os.getenv("KAMIWAZA_HOST", "localhost")
+                
+                if not (port and model):
+                    raise ValueError("Kamiwaza configuration is incomplete. Please provide port and model_name.")
+                
                 config_list = [{
-                    "model": agent_llm_config["model_name"],
-                    "base_url": f"http://{agent_llm_config.get('host_name', 'localhost')}:{agent_llm_config['port']}/v1"
-                }]
+                "model": model,
+                "base_url": f"http://{host}:{port}/v1",
+                "api_key": "not-needed"  # Add this to match test script
+            }]
             else:
-                # Fallback to global config
+                # For OpenAI or unknown configs, use the global config
                 global_config = self.llm_config_manager.get_active_config()
                 config_list = global_config.get("config_list", [])
                 
@@ -108,9 +129,17 @@ Follow these guidelines in all responses:
             agents=agents,
             messages=[],  # This must be passed directly, not through settings
             max_round=settings.get("max_round", 12),
-            speaker_selection_method=settings.get("speaker_selection_method", "round_robin"),
+            speaker_selection_method='round_robin',
             allow_repeat_speaker=settings.get("allow_repeat_speaker", False)
         )
+
+        # Initalize message
+        if not group_chat.messages:
+            group_chat.messages = [{
+                "role": "system",
+                "content": "Discussion initialized.",
+                "name": "system"
+            }]
         
         print(f"Created GroupChat object: {group_chat}")
         print(f"GroupChat max_round: {getattr(group_chat, 'max_round', None)}")
@@ -127,65 +156,27 @@ Follow these guidelines in all responses:
     ) -> autogen.GroupChatManager:
         """Create an AG2 GroupChatManager with optimized settings"""
         print(f"Creating GroupChatManager with group_chat: {group_chat}")
-        print(f"GroupChat max_round before manager creation: {getattr(group_chat, 'max_round', None)}")
         
         if not hasattr(group_chat, 'max_round'):
             raise ValueError("GroupChat must be properly initialized with max_round")
             
-        # Use the first agent's config for the manager
+        # Get config from first agent (EXACTLY like test)
         first_agent = group_chat.agents[0]
-        print(f"First agent: {first_agent}")
-        print(f"First agent type: {type(first_agent)}")
-        print(f"First agent attributes: {dir(first_agent)}")
-        print(f"First agent llm_config: {getattr(first_agent, 'llm_config', None)}")
         
         if hasattr(first_agent, "llm_config") and first_agent.llm_config:
-            llm_config = first_agent.llm_config
-            print(f"Using first agent's llm_config: {llm_config}")
-            
-            # Check if this is a Kamiwaza config
-            if (
-                isinstance(llm_config.get("config_list"), list) and 
-                len(llm_config["config_list"]) > 0 and
-                "base_url" in llm_config["config_list"][0] and
-                "/v1" in llm_config["config_list"][0]["base_url"]
-            ):
-                print("Detected Kamiwaza config, using as is")
-                # Use Kamiwaza config as is, but ensure it's in the right format
-                config = llm_config["config_list"][0]
-                llm_config = {
-                    "model": config["model"],
-                    "base_url": config["base_url"]
-                }
-            elif (
-                isinstance(llm_config.get("config_list"), list) and
-                len(llm_config["config_list"]) > 0 and
-                llm_config["config_list"][0].get("api_type") == "azure"
-            ):
-                print("Detected Azure config, using as is")
-                # Use Azure config as is
-                pass
-            else:
-                print("Unknown config type, falling back to global config")
-                # Fallback to global config
-                base_config = self.llm_config_manager.get_active_config()
-                llm_config = base_config
+            # Just pass through the config_list like in test
+            llm_config = {"config_list": first_agent.llm_config["config_list"]}
         else:
-            print("No llm_config found, using fallback config")
-            # Fallback to global config
+            # Use fallback config
             base_config = self.llm_config_manager.get_active_config()
-            llm_config = base_config
+            llm_config = {"config_list": base_config["config_list"]}
             
         print(f"Final LLM config for manager: {llm_config}")
             
-        # Create manager exactly like the docs example
+        # Create manager exactly like the test
         manager = autogen.GroupChatManager(
             groupchat=group_chat,
             llm_config=llm_config
         )
-        
-        print(f"Created GroupChatManager: {manager}")
-        print(f"Manager's groupchat: {manager.groupchat}")
-        print(f"Manager's groupchat max_round: {getattr(manager.groupchat, 'max_round', None) if manager.groupchat else None}")
         
         return manager

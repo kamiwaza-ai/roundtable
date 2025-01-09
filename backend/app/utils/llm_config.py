@@ -1,9 +1,14 @@
-
 import os
 from typing import Optional, Dict, Any
 from functools import lru_cache
 import logging
 from pydantic import ValidationError
+from dotenv import load_dotenv
+
+load_dotenv()
+
+#load env 
+
 
 from ..schemas.llm import LLMConfig, AzureOpenAIConfig, OpenAIConfig, KamiwazaConfig
 
@@ -20,12 +25,13 @@ class LLMConfigManager:
     def initialize_from_env(self) -> None:
         """Initialize LLM configuration from environment variables"""
         configs = {}
+        active_config = os.getenv("ACTIVE_LLM_CONFIG", "azure")  # Default to azure for backward compatibility
         
-        # Try Azure OpenAI configuration first
+        # Try Azure OpenAI configuration
         azure_key = os.getenv("AZURE_OPENAI_API_KEY")
         azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         
-        if azure_key and azure_endpoint:
+        if azure_key and azure_endpoint and azure_endpoint.strip():
             try:
                 configs["azure_config"] = AzureOpenAIConfig(
                     api_key=azure_key,
@@ -54,7 +60,7 @@ class LLMConfigManager:
             except ValidationError as e:
                 logger.warning(f"Failed to initialize Kamiwaza configuration: {e}")
         
-        # Fallback to OpenAI configuration
+        # Try OpenAI configuration
         openai_key = os.getenv("OPENAI_API_KEY")
         if openai_key:
             try:
@@ -71,7 +77,7 @@ class LLMConfigManager:
             raise LLMConfigurationError("No valid LLM configurations found in environment variables")
             
         try:
-            self._config = LLMConfig(**configs)
+            self._config = LLMConfig(**configs, active_config=active_config)
         except ValidationError as e:
             raise LLMConfigurationError(f"Invalid LLM configuration: {str(e)}")
     
@@ -94,7 +100,11 @@ class LLMConfigManager:
             }
         elif isinstance(active_config, KamiwazaConfig):
             return {
-                "config_list": [active_config.to_ag2_config()]
+                "config_list": [{
+                    "model": active_config.model,
+                    "base_url": f"http://{active_config.host_name}:{active_config.port}/v1",
+                    "api_key": "not-needed"
+                }]
             }
         elif isinstance(active_config, OpenAIConfig):
             return {

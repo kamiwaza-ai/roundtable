@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from app.api.v1 import agents, round_tables, messages, kamiwaza
-from .utils.llm_config_manager import LLMConfigManager
+from .utils.llm_config import LLMConfigManager, get_llm_config_manager
 
 app = FastAPI(
     title="Corporate Strategy Simulator",

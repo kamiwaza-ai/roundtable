@@ -9,7 +9,7 @@ from ..repositories.agent_repository import AgentRepository
 from ..schemas.agent import AgentCreate, AgentUpdate, AgentInDB
 from ..models.agent import Agent
 from ..utils.ag2_wrapper import AG2Wrapper
-from ..utils.llm_config_manager import LLMConfigManager
+from ..utils.llm_config import LLMConfigManager, get_llm_config_manager
 
 class AgentService:
     def __init__(self, db: Session):
