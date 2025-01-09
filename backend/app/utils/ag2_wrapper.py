@@ -129,7 +129,7 @@ Follow these guidelines in all responses:
             agents=agents,
             messages=[],  # This must be passed directly, not through settings
             max_round=settings.get("max_round", 12),
-            speaker_selection_method=settings.get("speaker_selection_method", "round_robin"),
+            speaker_selection_method='round_robin',
             allow_repeat_speaker=settings.get("allow_repeat_speaker", False)
         )
 
@@ -156,65 +156,27 @@ Follow these guidelines in all responses:
     ) -> autogen.GroupChatManager:
         """Create an AG2 GroupChatManager with optimized settings"""
         print(f"Creating GroupChatManager with group_chat: {group_chat}")
-        print(f"GroupChat max_round before manager creation: {getattr(group_chat, 'max_round', None)}")
         
         if not hasattr(group_chat, 'max_round'):
             raise ValueError("GroupChat must be properly initialized with max_round")
             
-        # Use the first agent's config for the manager
+        # Get config from first agent (EXACTLY like test)
         first_agent = group_chat.agents[0]
-        print(f"First agent: {first_agent}")
-        print(f"First agent type: {type(first_agent)}")
-        print(f"First agent attributes: {dir(first_agent)}")
-        print(f"First agent llm_config: {getattr(first_agent, 'llm_config', None)}")
         
         if hasattr(first_agent, "llm_config") and first_agent.llm_config:
-            llm_config = first_agent.llm_config
-            print(f"Using first agent's llm_config: {llm_config}")
-            
-            # Check if this is a Kamiwaza config
-            if (
-                isinstance(llm_config.get("config_list"), list) and 
-                len(llm_config["config_list"]) > 0 and
-                "base_url" in llm_config["config_list"][0] and
-                "/v1" in llm_config["config_list"][0]["base_url"]
-            ):
-                print("Detected Kamiwaza config, using as is")
-                # Use Kamiwaza config as is, but ensure it's in the right format
-                config = llm_config["config_list"][0]
-                llm_config = {
-        "config_list": llm_config["config_list"],
-        "temperature": llm_config.get("temperature", 0.7)
-    }
-            elif (
-                isinstance(llm_config.get("config_list"), list) and
-                len(llm_config["config_list"]) > 0 and
-                llm_config["config_list"][0].get("api_type") == "azure"
-            ):
-                print("Detected Azure config, using as is")
-                # Use Azure config as is
-                pass
-            else:
-                print("Unknown config type, falling back to global config")
-                # Fallback to global config
-                base_config = self.llm_config_manager.get_active_config()
-                llm_config = base_config
+            # Just pass through the config_list like in test
+            llm_config = {"config_list": first_agent.llm_config["config_list"]}
         else:
-            print("No llm_config found, using fallback config")
-            # Fallback to global config
+            # Use fallback config
             base_config = self.llm_config_manager.get_active_config()
-            llm_config = base_config
+            llm_config = {"config_list": base_config["config_list"]}
             
         print(f"Final LLM config for manager: {llm_config}")
             
-        # Create manager exactly like the docs example
+        # Create manager exactly like the test
         manager = autogen.GroupChatManager(
             groupchat=group_chat,
             llm_config=llm_config
         )
-        
-        print(f"Created GroupChatManager: {manager}")
-        print(f"Manager's groupchat: {manager.groupchat}")
-        print(f"Manager's groupchat max_round: {getattr(manager.groupchat, 'max_round', None) if manager.groupchat else None}")
         
         return manager

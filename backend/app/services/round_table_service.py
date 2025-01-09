@@ -118,44 +118,47 @@ class RoundTableService:
             agent_name_to_id[ag2_agent.name] = agent_data.id
             print(f"Created agent mapping: {ag2_agent.name} -> {agent_data.id}")
 
-        # Format initial message
-        initial_message = self._format_initial_message(round_table, prompt)
-
-        # Create group chat with proper settings
-        group_chat_settings = {
-            "max_round": round_table.settings.get("max_round", 12),  # Use consistent parameter name
-            "speaker_selection_method": round_table.settings.get("speaker_selection_method", "round_robin"),
-            "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", False),
-            "send_introductions": round_table.settings.get("send_introductions", True)
-        }
-        first_message = {
-            "role": "user",
-            "content": initial_message,
-            "name": ag2_agents[0].name
-        }
-
-        # Initialize the group chat with the first message
+        # Create group chat with proper settings (EXACTLY like test)
         group_chat = self.ag2_wrapper.create_group_chat(
             agents=ag2_agents,
             settings={
-                **group_chat_settings,
-                "messages": [first_message]  # Initialize in constructor
+                "max_round": round_table.settings.get("max_round", 12),
+                "speaker_selection_method": round_table.settings.get("speaker_selection_method", "round_robin"),
+                "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", False),
+                "messages": []  # Start empty like test
             }
         )
 
+        # Set system message (EXACTLY like test)
+        group_chat.messages = [{
+            "role": "system",
+            "content": "Discussion initialized.",
+            "name": "system"
+        }]
 
-        # Create the GroupChatManager to coordinate the discussion
+        # Format and create initial message (EXACTLY like test)
+        formatted_content = self._format_initial_message(round_table, prompt)
+        initial_message = {
+            "role": "user",
+            "content": formatted_content,
+            "name": ag2_agents[0].name
+        }
+
+        # Add initial message (EXACTLY like test)
+        group_chat.messages.append(initial_message)
+
+        # Create manager (EXACTLY like test)
         manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
 
-        # Store the initial message from the first agent
+        # Store the initial message
         self._store_message({
             "round_table_id": round_table_id,
-            "agent_id": participants[0]["agent"].id,  # First agent starts
-            "content": initial_message,
+            "agent_id": participants[0]["agent"].id,
+            "content": formatted_content,  # Use original formatted content
             "message_type": "introduction"
         })
 
-        # Update round table status to in_progress
+        # Update round table status
         round_table.status = "in_progress"
         self.db.commit()
 
@@ -196,23 +199,14 @@ class RoundTableService:
                 trigger=lambda _: True
             )
 
-        # Initialize the messages list with the first message
-        first_message = {
-            "role": "user",
-            "content": initial_message,
-            "name": ag2_agents[0].name
-        }
-        group_chat.messages = [first_message]
-        await asyncio.sleep(0.5) 
-        print("stopped waiting")
-        print('running chat')
-        print(f"first message: {first_message}")
+        print("running chat")
+        print(f"messages before chat: {group_chat.messages}")
 
-        # Start discussion using the first agent's message
+        # Run chat (EXACTLY like test)
         result = await manager.a_run_chat(
-            messages=[first_message],  # Pass the initial message explicitly
-            sender=ag2_agents[0],  # First agent starts the discussion
-            config=group_chat  # Pass the GroupChat as config
+            messages=group_chat.messages,# Use same initial_message object
+            sender=ag2_agents[0],
+            config=group_chat
         )
 
         # Update round table status
@@ -467,9 +461,6 @@ Begin the discussion by addressing the task directly."""
         # Resume the chat with saved state
         try:
             print(f"Attempting to resume chat with {len(round_table.messages_state)} messages")
-            # Initialize the group chat with the saved messages
-            group_chat.messages = round_table.messages_state
-            
             # Get the last message to determine the next speaker
             last_message = round_table.messages_state[-1] if round_table.messages_state else None
             next_speaker = None
@@ -482,10 +473,13 @@ Begin the discussion by addressing the task directly."""
             
             if not next_speaker:
                 next_speaker = ag2_agents[0]
+
+            # Initialize the group chat with all saved messages
+            group_chat.messages = round_table.messages_state
             
             # Start the discussion from where it left off
             result = await manager.a_run_chat(
-                messages=group_chat.messages,
+                messages=[last_message],  # Pass ONLY the last message
                 sender=next_speaker,
                 config=group_chat
             )

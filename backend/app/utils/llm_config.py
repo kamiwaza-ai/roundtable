@@ -100,7 +100,11 @@ class LLMConfigManager:
             }
         elif isinstance(active_config, KamiwazaConfig):
             return {
-                "config_list": [active_config.to_ag2_config()]
+                "config_list": [{
+                    "model": active_config.model,
+                    "base_url": f"http://{active_config.host_name}:{active_config.port}/v1",
+                    "api_key": "not-needed"
+                }]
             }
         elif isinstance(active_config, OpenAIConfig):
             return {
