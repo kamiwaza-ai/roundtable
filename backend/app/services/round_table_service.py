@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 from datetime import datetime
 import autogen
+import asyncio
 
 from ..repositories.base import BaseRepository
 from ..models.round_table import RoundTable
@@ -127,12 +128,21 @@ class RoundTableService:
             "allow_repeat_speaker": round_table.settings.get("allow_repeat_speaker", False),
             "send_introductions": round_table.settings.get("send_introductions", True)
         }
+        first_message = {
+            "role": "user",
+            "content": initial_message,
+            "name": ag2_agents[0].name
+        }
 
         # Initialize the group chat with the first message
         group_chat = self.ag2_wrapper.create_group_chat(
-            ag2_agents,
-            group_chat_settings
+            agents=ag2_agents,
+            settings={
+                **group_chat_settings,
+                "messages": [first_message]  # Initialize in constructor
+            }
         )
+
 
         # Create the GroupChatManager to coordinate the discussion
         manager = self.ag2_wrapper.create_group_chat_manager(group_chat)
@@ -193,6 +203,10 @@ class RoundTableService:
             "name": ag2_agents[0].name
         }
         group_chat.messages = [first_message]
+        await asyncio.sleep(0.5) 
+        print("stopped waiting")
+        print('running chat')
+        print(f"first message: {first_message}")
 
         # Start discussion using the first agent's message
         result = await manager.a_run_chat(

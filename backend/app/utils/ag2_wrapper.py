@@ -49,9 +49,10 @@ class AG2Wrapper:
                     raise ValueError("Kamiwaza configuration is incomplete. Please provide port and model_name.")
                 
                 config_list = [{
-                    "model": model,
-                    "base_url": f"http://{host}:{port}/v1"
-                }]
+                "model": model,
+                "base_url": f"http://{host}:{port}/v1",
+                "api_key": "not-needed"  # Add this to match test script
+            }]
             else:
                 # For OpenAI or unknown configs, use the global config
                 global_config = self.llm_config_manager.get_active_config()
@@ -131,6 +132,14 @@ Follow these guidelines in all responses:
             speaker_selection_method=settings.get("speaker_selection_method", "round_robin"),
             allow_repeat_speaker=settings.get("allow_repeat_speaker", False)
         )
+
+        # Initalize message
+        if not group_chat.messages:
+            group_chat.messages = [{
+                "role": "system",
+                "content": "Discussion initialized.",
+                "name": "system"
+            }]
         
         print(f"Created GroupChat object: {group_chat}")
         print(f"GroupChat max_round: {getattr(group_chat, 'max_round', None)}")
@@ -174,9 +183,9 @@ Follow these guidelines in all responses:
                 # Use Kamiwaza config as is, but ensure it's in the right format
                 config = llm_config["config_list"][0]
                 llm_config = {
-                    "model": config["model"],
-                    "base_url": config["base_url"]
-                }
+        "config_list": llm_config["config_list"],
+        "temperature": llm_config.get("temperature", 0.7)
+    }
             elif (
                 isinstance(llm_config.get("config_list"), list) and
                 len(llm_config["config_list"]) > 0 and

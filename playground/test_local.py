@@ -1,4 +1,5 @@
 import autogen
+import asyncio
 
 # Configuration for the local model
 config_list = [
@@ -9,28 +10,97 @@ config_list = [
     }
 ]
 
-# Create an assistant agent using the local model configuration
-assistant = autogen.AssistantAgent(
-    name="Assistant",
-    system_message="You are a helpful AI assistant.",
-    llm_config={
-        "config_list": config_list,
-        "temperature": 0.7
+async def test_group_chat():
+    print("\nSetting up group chat test...")
+    
+    # Create multiple agents like in our app
+    agent1 = autogen.AssistantAgent(
+        name="Tyler",
+        system_message="You are a helpful AI assistant.",
+        llm_config={
+            "config_list": config_list,
+            "temperature": 0.7
+        }
+    )
+
+    agent2 = autogen.AssistantAgent(
+        name="Matt",
+        system_message="You are a helpful AI assistant.",
+        llm_config={
+            "config_list": config_list,
+            "temperature": 0.7
+        }
+    )
+
+    agent3 = autogen.AssistantAgent(
+        name="Luke",
+        system_message="You are a helpful AI assistant.",
+        llm_config={
+            "config_list": config_list,
+            "temperature": 0.7
+        }
+    )
+
+    print("Created agents:", [agent1.name, agent2.name, agent3.name])
+
+    # Create group chat with empty messages first
+    groupchat = autogen.GroupChat(
+        agents=[agent1, agent2, agent3],
+        messages=[],  # Start empty
+        max_round=12,
+        speaker_selection_method="round_robin",
+        allow_repeat_speaker=True
+    )
+
+    print("Created group chat")
+
+    # Initialize with system message first
+    groupchat.messages = [{
+        "role": "system",
+        "content": "Discussion initialized.",
+        "name": "system"
+    }]
+
+    print(f"Group chat messages after system init: {groupchat.messages}")
+
+    # Initial message
+    initial_message = {
+        "role": "user",
+        "content": "Let's talk about San Diego. What's your favorite thing about the city?",
+        "name": "Tyler"
     }
-)
 
-# Create a user proxy agent - this one doesn't use the LLM, so no config needed
-user_proxy = autogen.UserProxyAgent(
-    name="User",
-    human_input_mode="TERMINATE",  # This allows us to stop the conversation by typing 'exit'
-    max_consecutive_auto_reply=1,
-    code_execution_config=False  # Disable code execution for this simple test
-)
+    print(f"Initial message: {initial_message}")
+    
+    # Add initial message after system message
+    groupchat.messages.append(initial_message)
 
-# Test the conversation
-user_proxy.initiate_chat(
-    assistant,
-    message="Tell me what model you are."
-)
+    print(f"Group chat messages after adding initial: {groupchat.messages}")
 
-# You can terminate the chat by typing 'exit' when prompted
+    # Create manager
+    manager = autogen.GroupChatManager(
+        groupchat=groupchat,
+        llm_config={"config_list": config_list}  # Simplified config
+    )
+
+    print("Created manager")
+    print("Starting group chat...")
+    
+    try:
+        # Run the chat with config
+        result = await manager.a_run_chat(
+            messages=[initial_message],
+            sender=agent1,
+            config=groupchat  # Pass the groupchat as config
+        )
+        
+        print(f"Chat result: {result}")
+        print(f"Final messages: {manager.groupchat.messages}")
+    except Exception as e:
+        print(f"Error during chat: {str(e)}")
+        print(f"Messages at error: {groupchat.messages if groupchat else None}")
+        print(f"Manager groupchat: {manager.groupchat if manager else None}")
+        raise
+
+if __name__ == "__main__":
+    asyncio.run(test_group_chat())
