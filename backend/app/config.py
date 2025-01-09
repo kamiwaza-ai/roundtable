@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = "your-openai-key"
     
     # Azure OpenAI
-    azure_openai_api_key: str = "850baaa6daa54f31b850efd741f6fa2a"
+    azure_openai_api_key: str 
     azure_openai_endpoint: str = "https://oaity.openai.azure.com/"
     azure_openai_model: str = "gpt-4o"
     azure_openai_api_version: str = "2024-02-15-preview"
