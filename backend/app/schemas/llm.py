@@ -14,6 +14,8 @@ class AzureOpenAIConfig(BaseModel):
     
     @validator('azure_endpoint')
     def validate_endpoint(cls, v):
+        if not v or v.strip() == '':
+            raise ValueError('Azure endpoint cannot be empty')
         if not v.startswith(('http://', 'https://')):
             raise ValueError('Azure endpoint must start with http:// or https://')
         return v.rstrip('/')
@@ -31,6 +33,12 @@ class OpenAIConfig(BaseModel):
     model: str = "gpt-4"
     api_base: Optional[str] = None
     temperature: float = 0.7
+
+    @validator('api_base')
+    def validate_api_base(cls, v):
+        if v is not None and not v.startswith(('http://', 'https://')):
+            raise ValueError('API base URL must start with http:// or https://')
+        return v.rstrip('/') if v else v
 
 class KamiwazaConfig(BaseModel):
     """Kamiwaza configuration"""
@@ -53,13 +61,14 @@ class LLMConfig(BaseModel):
     azure_config: Optional[AzureOpenAIConfig] = None
     openai_config: Optional[OpenAIConfig] = None
     kamiwaza_config: Optional[KamiwazaConfig] = None
+    active_config: Literal["azure", "openai", "kamiwaza"]
     
     def get_active_config(self) -> Union[AzureOpenAIConfig, OpenAIConfig, KamiwazaConfig]:
         """Get the active configuration to use"""
-        if self.azure_config:
+        if self.active_config == "azure" and self.azure_config:
             return self.azure_config
-        elif self.kamiwaza_config:
+        elif self.active_config == "kamiwaza" and self.kamiwaza_config:
             return self.kamiwaza_config
-        elif self.openai_config:
+        elif self.active_config == "openai" and self.openai_config:
             return self.openai_config
-        raise ValueError("No valid LLM configuration found")
+        raise ValueError(f"No valid configuration found for type: {self.active_config}")

@@ -13,7 +13,7 @@ from ..models.message import Message
 from ..models.agent import Agent
 from ..schemas.round_table import RoundTableCreate, RoundTableUpdate, RoundTableInDB
 from ..schemas.message import MessageCreate, MessageInDB
-from ..utils.llm_config_manager import LLMConfigManager
+from ..utils.llm_config import LLMConfigManager, get_llm_config_manager
 from ..utils.ag2_wrapper import AG2Wrapper
 from .agent_service import AgentService
 
