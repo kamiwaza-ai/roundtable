@@ -22,7 +22,8 @@ class AgentService:
         # If host is prod.kamiwaza.ai, use the model as model_name
         #TODO: THIS IS NOT HOW IT SHOULD WORK BUT A HOTFIX FOR NOW
         print(agent_data)
-        if agent_data.llm_config['host_name'] == "prod.kamiwaza.ai":
+        
+        if agent_data.llm_config.get('host_name') == "prod.kamiwaza.ai":
             agent_data.llm_config["model_name"] = 'model'
         
         # Create database record

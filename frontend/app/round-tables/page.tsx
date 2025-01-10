@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { Agent, RoundTable, CreateRoundTableRequest } from '@/lib/api-types';
-import { api } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Dialog,
     DialogContent,
@@ -12,12 +14,6 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { MultiSelect } from '@/components/ui/multi-select';
-import { useRouter } from 'next/navigation';
 import {
     Select,
     SelectContent,
@@ -25,138 +21,148 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Badge } from '@/components/ui/badge';
-import { CalendarIcon, CheckCircleIcon, ClockIcon, PlayIcon } from 'lucide-react';
-import { cn } from "@/lib/utils";
+import { api } from '@/lib/api';
+import { Agent, RoundTable } from '@/lib/api-types';
 
 type SortOption = 'recent' | 'status' | 'alphabetical' | 'participants';
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'completed';
 
 export default function RoundTablesPage() {
+    console.log('Component rendering');
     const router = useRouter();
     const [roundTables, setRoundTables] = useState<RoundTable[]>([]);
     const [agents, setAgents] = useState<Agent[]>([]);
     const [isOpen, setIsOpen] = useState(false);
-    const [isDiscussOpen, setIsDiscussOpen] = useState(false);
-    const [selectedRoundTable, setSelectedRoundTable] = useState<RoundTable | null>(null);
-    const [discussionPrompt, setDiscussionPrompt] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState<SortOption>('recent');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-    const [formData, setFormData] = useState<CreateRoundTableRequest>({
+    const [formData, setFormData] = useState({
         title: '',
         context: '',
-        participant_ids: [],
     });
-
-    useEffect(() => {
-        loadRoundTables();
-        loadAgents();
-    }, []);
+    const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
 
     const loadRoundTables = async () => {
+        console.log('Loading round tables...');
         try {
             const data = await api.getRoundTables();
-            setRoundTables(data);
+            console.log('Round tables data received:', data);
+            setRoundTables(data || []);
         } catch (error) {
             console.error('Failed to load round tables:', error);
+            setRoundTables([]);
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const loadAgents = async () => {
+        console.log('Loading agents...');
         try {
             const data = await api.getAgents();
-            setAgents(data);
+            console.log('Agents data received:', data);
+            setAgents(data || []);
         } catch (error) {
             console.error('Failed to load agents:', error);
+            setAgents([]);
         }
     };
+
+    useEffect(() => {
+        console.log('useEffect triggered');
+        setIsLoading(true);
+        Promise.all([loadRoundTables(), loadAgents()]).finally(() => {
+            console.log('All data loaded');
+            setIsLoading(false);
+        });
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await api.createRoundTable(formData);
+            await api.createRoundTable({
+                title: formData.title,
+                context: formData.context,
+                participant_ids: selectedAgents,
+            });
             setIsOpen(false);
             loadRoundTables();
             setFormData({
                 title: '',
                 context: '',
-                participant_ids: [],
             });
+            setSelectedAgents([]);
         } catch (error) {
             console.error('Failed to create round table:', error);
         }
     };
 
-    const handleStartDiscussion = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedRoundTable) return;
-
-        try {
-            api.startDiscussion(selectedRoundTable.id, discussionPrompt);
-            
-            setIsDiscussOpen(false);
-            setDiscussionPrompt('');
-            setSelectedRoundTable(null);
-            
-            router.push(`/round-tables/${selectedRoundTable.id}`);
-        } catch (error) {
-            console.error('Failed to start discussion:', error);
-        }
-    };
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'pending':
-                return 'bg-yellow-100 text-yellow-800';
-            case 'in_progress':
-                return 'bg-blue-100 text-blue-800';
-            case 'completed':
-                return 'bg-green-100 text-green-800';
-            default:
-                return 'bg-gray-100 text-gray-800';
-        }
-    };
-
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case 'pending':
-                return <ClockIcon className="h-4 w-4" />;
-            case 'in_progress':
-                return <PlayIcon className="h-4 w-4" />;
-            case 'completed':
-                return <CheckCircleIcon className="h-4 w-4" />;
-            default:
-                return null;
-        }
-    };
-
     const sortRoundTables = (tables: RoundTable[]) => {
+        console.log('Sorting tables:', { tables, sortBy });
+        if (!tables || !Array.isArray(tables)) return [];
         return [...tables].sort((a, b) => {
             switch (sortBy) {
-                case 'recent':
-                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-                case 'status':
-                    const statusOrder = { in_progress: 0, pending: 1, completed: 2 };
-                    return (statusOrder[a.status as keyof typeof statusOrder] || 0) - 
-                           (statusOrder[b.status as keyof typeof statusOrder] || 0);
                 case 'alphabetical':
-                    return a.title.localeCompare(b.title);
+                    return (a.title || '').localeCompare(b.title || '');
+                case 'status':
+                    return (a.status || '').localeCompare(b.status || '');
                 case 'participants':
-                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                    return ((b.messages?.length || 0) - (a.messages?.length || 0));
+                case 'recent':
                 default:
-                    return 0;
+                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
             }
         });
     };
 
     const filterRoundTables = (tables: RoundTable[]) => {
+        console.log('Filtering tables:', { tables, statusFilter });
+        if (!tables || !Array.isArray(tables)) return [];
         return tables.filter(table => {
+            if (!table) return false;
             const matchesStatus = statusFilter === 'all' || table.status === statusFilter;
             return matchesStatus;
         });
     };
 
     const displayedRoundTables = sortRoundTables(filterRoundTables(roundTables));
+
+    console.log('Before rendering, state:', { 
+        isLoading, 
+        error, 
+        agentsLength: agents?.length,
+        roundTablesLength: roundTables?.length,
+        selectedAgentsLength: selectedAgents?.length
+    });
+
+    if (isLoading) {
+        console.log('Rendering loading state');
+        return (
+            <div className="container mx-auto py-8">
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">Round Tables</h1>
+                </div>
+                <div className="flex items-center justify-center min-h-[200px]">
+                    <div>Loading round tables...</div>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        console.log('Rendering error state');
+        return (
+            <div className="container mx-auto py-8">
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">Round Tables</h1>
+                </div>
+                <div className="flex items-center justify-center min-h-[200px]">
+                    <div className="text-red-500">Error: {error}</div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="container mx-auto py-8">
@@ -197,23 +203,21 @@ export default function RoundTablesPage() {
                                 />
                             </div>
                             <div>
-                                <Label>Participants</Label>
+                                <Label htmlFor="agents">Participants</Label>
                                 <MultiSelect
-                                    options={agents.map((agent) => ({
-                                        value: agent.id,
-                                        label: agent.name,
-                                    }))}
-                                    value={formData.participant_ids || []}
-                                    onChange={(values) =>
-                                        setFormData({
-                                            ...formData,
-                                            participant_ids: values || [],
-                                        })
-                                    }
-                                    className="w-full"
-                                    popoverContentProps={{
-                                        className: "max-h-[200px] overflow-y-auto"
+                                    options={(agents || []).map(agent => {
+                                        console.log('Mapping agent:', agent);
+                                        return {
+                                            value: agent.id,
+                                            label: agent.name,
+                                        };
+                                    })}
+                                    defaultValue={selectedAgents}
+                                    onValueChange={(value) => {
+                                        console.log('MultiSelect value changed:', value);
+                                        setSelectedAgents(value);
                                     }}
+                                    placeholder="Select participants..."
                                 />
                             </div>
                             <Button type="submit">Create</Button>
@@ -253,75 +257,28 @@ export default function RoundTablesPage() {
                 </div>
             </div>
 
-            <Dialog open={isDiscussOpen} onOpenChange={setIsDiscussOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Start Discussion</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleStartDiscussion} className="space-y-4">
-                        <div>
-                            <Label htmlFor="prompt">Discussion Prompt</Label>
-                            <Textarea
-                                id="prompt"
-                                value={discussionPrompt}
-                                onChange={(e) => setDiscussionPrompt(e.target.value)}
-                                required
-                            />
-                        </div>
-                        <Button type="submit">Start</Button>
-                    </form>
-                </DialogContent>
-            </Dialog>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {displayedRoundTables.map((roundTable) => (
-                    <Card key={roundTable.id} className="flex flex-col">
-                        <CardHeader>
-                            <div className="flex justify-between items-start">
-                                <CardTitle className="flex-1">{roundTable.title}</CardTitle>
-                                <Badge 
-                                    className={`ml-2 flex items-center gap-1 ${getStatusColor(roundTable.status)}`}
-                                >
-                                    {getStatusIcon(roundTable.status)}
-                                    {roundTable.status}
-                                </Badge>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="flex-1">
-                            <p className="text-sm">{roundTable.context}</p>
-                            <div className="mt-4 space-y-2">
-                                <div className="flex items-center gap-2 text-sm text-gray-500">
-                                    <CalendarIcon className="h-4 w-4" />
-                                    {new Date(roundTable.created_at).toLocaleDateString()}
-                                </div>
-                                {roundTable.messages && (
-                                    <div className="text-sm text-gray-500">
-                                        {roundTable.messages.length} messages
-                                    </div>
-                                )}
-                            </div>
-                        </CardContent>
-                        <CardFooter className="mt-auto">
-                            {roundTable.status === 'pending' && (
-                                <Button
-                                    onClick={() => {
-                                        setSelectedRoundTable(roundTable);
-                                        setIsDiscussOpen(true);
-                                    }}
-                                    className="w-full"
-                                >
-                                    Start Discussion
-                                </Button>
-                            )}
-                            {roundTable.status !== 'pending' && (
-                                <Link href={`/round-tables/${roundTable.id}`} className="w-full">
-                                    <Button variant="outline" className="w-full">
-                                        View Discussion
-                                    </Button>
-                                </Link>
-                            )}
-                        </CardFooter>
-                    </Card>
+                {displayedRoundTables.map((table) => (
+                    <div
+                        key={table.id}
+                        className="bg-card text-card-foreground rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => router.push(`/round-tables/${table.id}`)}
+                    >
+                        <h2 className="text-xl font-semibold mb-2">{table.title}</h2>
+                        <p className="text-sm text-muted-foreground mb-4">{table.context}</p>
+                        <div className="flex justify-between items-center">
+                            <span className={`px-2 py-1 rounded-full text-sm ${
+                                table.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                table.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                'bg-gray-100 text-gray-800'
+                            }`}>
+                                {table.status}
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                                {table.messages?.length || 0} messages
+                            </span>
+                        </div>
+                    </div>
                 ))}
             </div>
         </div>

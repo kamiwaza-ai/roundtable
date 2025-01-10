@@ -23,7 +23,7 @@ export default function AgentDetailsPage() {
     async function fetchAgent() {
       if (!agentId) return;
       try {
-        const res = await fetch(\`http://localhost:8000/api/v1/agents/\${agentId}\`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/agents/${agentId}`);
         if (!res.ok) {
           throw new Error("Failed to fetch the agent.");
         }
@@ -41,7 +41,7 @@ export default function AgentDetailsPage() {
   async function handleDelete() {
     if (!agentId) return;
     try {
-      const res = await fetch(\`http://localhost:8000/api/v1/agents/\${agentId}\`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/agents/${agentId}`, {
         method: "DELETE",
       });
       if (!res.ok) {

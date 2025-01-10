@@ -9,11 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, User } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { formatDistanceStrict } from 'date-fns';
 
-const POLLING_INTERVAL = 2000; // 2 seconds
+const POLLING_INTERVAL = 1000; // Poll every second
 
 export default function RoundTableDetailPage() {
     const params = useParams();
@@ -50,13 +50,10 @@ export default function RoundTableDetailPage() {
             setMessages(data);
         } catch (error) {
             console.error('Failed to load messages:', error);
-            toast({
-                title: "Error",
-                description: "Failed to load messages",
-                variant: "destructive"
-            });
+            // Don't show error toast for no messages
+            setMessages([]);
         }
-    }, [params.id, toast]);
+    }, [params.id]);
 
     const loadAgents = useCallback(async () => {
         try {
@@ -99,20 +96,19 @@ export default function RoundTableDetailPage() {
 
     const handleStartDiscussion = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!prompt) return;
+        if (!prompt || !roundTable) return;
 
         setIsLoading(true);
         try {
-            await api.startDiscussion(params.id as string, prompt);
-            await loadRoundTable();
-            await loadMessages();
+            // Fire and forget - don't await the response
+            api.startDiscussion(roundTable.id, prompt);
             setPrompt('');
-            setIsPolling(true); // Start polling when discussion starts
+            setIsPolling(true); // Start polling immediately
         } catch (error) {
             console.error('Failed to start discussion:', error);
             toast({
                 title: "Error",
-                description: "Failed to start discussion",
+                description: error instanceof Error ? error.message : "Failed to start discussion",
                 variant: "destructive"
             });
         } finally {
