@@ -19,6 +19,12 @@ class AgentService:
         self.ag2_wrapper = AG2Wrapper(self.llm_config_manager)
 
     def create_agent(self, agent_data: AgentCreate) -> AgentInDB:
+        # If host is prod.kamiwaza.ai, use the model as model_name
+        #TODO: THIS IS NOT HOW IT SHOULD WORK BUT A HOTFIX FOR NOW
+        print(agent_data)
+        if agent_data.llm_config['host_name'] == "prod.kamiwaza.ai":
+            agent_data.llm_config["model_name"] = 'model'
+        
         # Create database record
         db_agent = self.repository.create(agent_data)
         

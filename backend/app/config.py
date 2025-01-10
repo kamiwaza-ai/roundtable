@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = "2024-02-15-preview"
 
     # Kamiwaza API URI
-    kamiwaza_api_uri: Optional[str] = "http://localhost:7777"
+    kamiwaza_api_uri: Optional[str] 
 
     class Config:
         env_file = ".env"

@@ -100,13 +100,15 @@ export default function AgentsPage() {
         } else {
             const firstModel = kamiwazaModels[0];
             console.log("First Kamiwaza model:", firstModel);
-            if (firstModel) {
+            if (firstModel && firstModel.instances.length > 0) {
+                const instance = firstModel.instances[0];
                 setFormData({
                     ...formData,
                     llm_config: {
                         provider: "kamiwaza" as const,
                         model_name: firstModel.model_name,
-                        port: firstModel.instances[0]?.port || 0,
+                        host_name: instance.host_name,
+                        port: instance.port,
                         temperature: 0.7,
                     }
                 });

@@ -8,7 +8,7 @@ import re
 class KamiwazaLLMConfig(BaseModel):
     provider: str = "kamiwaza"
     model_name: str
-    host_name: str = "localhost"
+    host_name: str
     port: int
     temperature: float = 0.7
     max_tokens: int = 150

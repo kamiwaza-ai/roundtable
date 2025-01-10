@@ -41,18 +41,18 @@ class AG2Wrapper:
                     "api_type": "azure"
                 }]
             elif "provider" in agent_llm_config and agent_llm_config["provider"] == "kamiwaza":
-                port = agent_llm_config.get("port") or os.getenv("KAMIWAZA_PORT")
-                model = agent_llm_config.get("model_name") or os.getenv("KAMIWAZA_MODEL")
-                host = agent_llm_config.get("host_name") or os.getenv("KAMIWAZA_HOST", "localhost")
+                port = agent_llm_config.get("port")
+                model = agent_llm_config.get("model_name")
+                host = agent_llm_config.get("host_name")
                 
-                if not (port and model):
-                    raise ValueError("Kamiwaza configuration is incomplete. Please provide port and model_name.")
+                if not (port and model and host):
+                    raise ValueError("Kamiwaza configuration is incomplete. Please provide port, model_name, and host_name.")
                 
                 config_list = [{
-                "model": model,
-                "base_url": f"http://{host}:{port}/v1",
-                "api_key": "not-needed"  # Add this to match test script
-            }]
+                    "model": "model",  # Always use "model" as the model name for Kamiwaza
+                    "base_url": f"http://{host}:{port}/v1",
+                    "api_key": "not-needed"
+                }]
             else:
                 # For OpenAI or unknown configs, use the global config
                 global_config = self.llm_config_manager.get_active_config()
